@@ -3,13 +3,8 @@ import * as THREE from 'three';
 import { Connection } from '../network/connection';
 import { isInteractiveTarget } from './controls/input-target';
 import { VoxelAvatar } from './entities/avatar';
+import { buildBlockMeshes, disposeBlockMeshes } from './block-meshes';
 export type TargetBlock = Pick<Block, 'material' | 'x' | 'y' | 'z'>;
-const colors = {
-  grass: 0x6b9c52,
-  dirt: 0x9c7353,
-  stone: 0x8c999b,
-  wood: 0xc19766,
-};
 export class WorldScene {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -80,34 +75,9 @@ export class WorldScene {
     this.raf = requestAnimationFrame(this.frame);
   }
   rebuild = () => {
-    for (const mesh of this.meshes) {
-      this.scene.remove(mesh);
-      mesh.geometry.dispose();
-      (mesh.material as THREE.Material).dispose();
-    }
-    this.meshes = [];
-    for (const material of Object.keys(colors) as Material[]) {
-      const blocks = [...this.connection.blocks.values()].filter(
-        (b) => b.material === material,
-      );
-      const mesh = new THREE.InstancedMesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({
-          color: colors[material],
-          roughness: 1,
-        }),
-        blocks.length,
-      );
-      const matrix = new THREE.Matrix4();
-      blocks.forEach((b, i) => {
-        matrix.makeTranslation(b.x, b.y, b.z);
-        mesh.setMatrixAt(i, matrix);
-      });
-      mesh.userData.blocks = blocks;
-      mesh.computeBoundingSphere();
-      this.scene.add(mesh);
-      this.meshes.push(mesh);
-    }
+    disposeBlockMeshes(this.scene, this.meshes);
+    this.meshes = buildBlockMeshes(this.connection.blocks.values());
+    for (const mesh of this.meshes) this.scene.add(mesh);
   };
   private resize = () => {
     const w = this.host.clientWidth,
