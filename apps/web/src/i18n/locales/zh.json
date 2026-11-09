@@ -33,7 +33,8 @@
     "switchLanguage": "切换语言",
     "connectedStatus": "已连接",
     "connectingStatus": "正在连接…",
-    "reconnectingStatus": "连接中断，正在恢复"
+    "reconnectingStatus": "连接中断，正在恢复",
+    "watch": "观战"
   },
   "hud": {
     "materials": {

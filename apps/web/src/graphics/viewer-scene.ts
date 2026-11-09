@@ -44,6 +44,8 @@ export class ViewerScene {
     Math.max(150, Math.round(LIMIT * 10)),
   );
   onModeChange = (_mode: SpectatorMode) => {};
+  /** Esc in the free camera with the mouse already released leaves the viewer. */
+  onExit = () => {};
   private meshes: THREE.InstancedMesh[] = [];
   private avatars = new Map<string, VoxelAvatar>();
   private keys = new Set<string>();
@@ -192,7 +194,8 @@ export class ViewerScene {
       return;
     }
     if (event.code === 'Escape') {
-      this.toFree();
+      if (this.follow !== undefined || this.overview) this.toFree();
+      else if (!this.locked()) this.onExit();
       return;
     }
     if (!MOVE_KEYS.has(event.code)) return;

@@ -39,6 +39,7 @@ export function Watch() {
     feed.onBlocks = scene.rebuild;
     feed.onChange = update;
     scene.onModeChange = update;
+    scene.onExit = () => window.location.assign('/');
     feed.start();
     return () => {
       feed.stop();
@@ -63,6 +64,19 @@ export function Watch() {
         Spectating · read-only · {status.mode} · {status.players} in world ·{' '}
         {status.state}
       </div>
+      <button
+        onClick={() => window.location.assign('/')}
+        style={{
+          ...panel,
+          top: 16,
+          right: 16,
+          border: 0,
+          cursor: 'pointer',
+          font: '600 13px system-ui, sans-serif',
+        }}
+      >
+        Exit
+      </button>
       <div
         aria-label="Spectator controls"
         style={{
@@ -78,7 +92,8 @@ export function Watch() {
         scroll
         <br />
         <b>Follow player</b> Tab (Shift+Tab back) · <b>Overview</b> M ·{' '}
-        <b>Free camera</b> any move key
+        <b>Free camera</b> any move key · <b>Exit</b> Esc (mouse released) or
+        the Exit button
       </div>
     </main>
   );

@@ -66,6 +66,9 @@ export function GameHeader({
           >
             {t('header.console')}
           </button>
+          <button onClick={() => window.location.assign('/watch')}>
+            {t('header.watch')}
+          </button>
           <button
             aria-expanded={isMenuOpen}
             aria-controls="game-menu"
@@ -101,6 +104,12 @@ export function GameHeader({
           onFocus={onPreloadConsole}
         >
           {t('header.console')}
+        </button>
+        <button
+          className="exit-game"
+          onClick={() => window.location.assign('/watch')}
+        >
+          {t('header.watch')}
         </button>
         <LanguageSwitcher variant="hud" />
         {joined && (

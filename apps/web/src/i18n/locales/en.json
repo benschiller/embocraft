@@ -33,7 +33,8 @@
     "switchLanguage": "Switch Language",
     "connectedStatus": "Connected",
     "connectingStatus": "Connecting…",
-    "reconnectingStatus": "Connection lost, reconnecting…"
+    "reconnectingStatus": "Connection lost, reconnecting…",
+    "watch": "Watch"
   },
   "hud": {
     "materials": {
