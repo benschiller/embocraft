@@ -1,4 +1,9 @@
-# EmboCraft
+# EmboCraft (Floperati fork)
+
+> **Floperati fork.** Branch `floperati` is pinned to upstream [`lulabs-org/embocraft`](https://github.com/lulabs-org/embocraft) (formerly `agent-voxel-world`) at
+> `96ea050c00eb412fb927a4d574e3b6453b623864` (2026-11-08, "refactor(server): organize AI character module layers (#224)").
+> Upstream is merged only by decision. Fork changes: voice stack removed (no Whisper/Piper/speech container) and an append-only block edit history.
+> Toolchain: Node 22, pnpm 10.6.2 (`corepack`). Local check that mirrors upstream CI: `scripts/floperati/check.sh`.
 
 English | [简体中文](README_CN.md)
 
