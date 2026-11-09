@@ -1,6 +1,19 @@
 import { ChatStore, WorldChat, visibleEvent } from '../chat';
 import { peekDatabaseClient } from '../../core/database/client';
 import { WorldStore } from './persistence/store';
+
+/** Maps a world session to the managed AI character and run behind it, if any. */
+export type CharacterAttribution = (
+  sessionId: string,
+) => { characterId: string; runId?: string } | undefined;
+let resolveCharacter: CharacterAttribution = () => undefined;
+/** Wired by server assembly so the world module never imports ai-characters. */
+export function bindEditAttribution(resolve: CharacterAttribution) {
+  resolveCharacter = resolve;
+  return () => {
+    if (resolveCharacter === resolve) resolveCharacter = () => undefined;
+  };
+}
 import { Room, Client, ServerError } from '@colyseus/core';
 import { Avatar, WorldState } from './world.schema';
 import {
@@ -150,8 +163,19 @@ export class WorldRoom extends Room<WorldState> {
               return;
             }
             const edit = payload as Edit;
-            const actorName = this.state.players.get(client.sessionId)?.name;
-            await this.store.save(edit, actorName ?? client.sessionId);
+            const editor = this.state.players.get(client.sessionId)!;
+            const human = editor.kind === 'human';
+            const character = human
+              ? undefined
+              : resolveCharacter(client.sessionId);
+            await this.store.save(edit, {
+              editorId: client.sessionId,
+              editorName: editor.name,
+              editorKind: human ? 'human' : 'agent',
+              characterId: character?.characterId,
+              runId: character?.runId,
+              materialBefore: this.blocks.get(key(edit))?.material ?? null,
+            });
             if (edit.material === null) this.blocks.delete(key(edit));
             else
               this.blocks.set(key(edit), {

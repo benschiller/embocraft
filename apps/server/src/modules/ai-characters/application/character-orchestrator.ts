@@ -265,6 +265,14 @@ export class AICharacterOrchestrator {
     return this.jobs.get(id)?.view.sessionId;
   }
 
+  /** Managed character (and its current run) behind a world session, if any. */
+  characterForSession(sessionId: string) {
+    for (const job of this.jobs.values())
+      if (job.view.sessionId === sessionId)
+        return { characterId: job.view.id, runId: job.currentRunId };
+    return undefined;
+  }
+
   taskIdentity(id: string) {
     return this.jobs.get(id)?.runtime.view().identity;
   }

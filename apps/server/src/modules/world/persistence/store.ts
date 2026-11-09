@@ -8,6 +8,20 @@ import {
   type Block,
   type Material,
 } from '@voxel/shared';
+
+/** Who made an edit and what it replaced; recorded in the append-only history. */
+export type EditAttribution = {
+  /** World session id of the editor. */
+  editorId: string;
+  editorName?: string;
+  editorKind: 'human' | 'agent';
+  /** Managed AI character and its current task run, when the editor is one. */
+  characterId?: string;
+  runId?: string;
+  /** Material at the cell before the edit (terrain included); null = empty. */
+  materialBefore: Material | null;
+};
+
 export class WorldStore {
   readonly mode: 'postgresql' | 'memory';
   private readonly db?: PrismaClient;
@@ -39,8 +53,9 @@ export class WorldStore {
     }
     return world.revision;
   }
-  async save(edit: Edit, editedBy?: string) {
+  async save(edit: Edit, by: EditAttribution) {
     if (!this.db) return;
+    const editedBy = by.editorName ?? by.editorId;
     await this.db.$transaction(async (tx) => {
       const result = await tx.world.updateMany({
         where: { id: WORLD_ID, revision: edit.revision },
@@ -52,6 +67,23 @@ export class WorldStore {
         where: { worldId_x_y_z: { worldId: WORLD_ID, x, y, z } },
         create: { worldId: WORLD_ID, x, y, z, material, editedBy },
         update: { material, editedBy },
+      });
+      // Append-only: history rows are only ever created, never updated.
+      await tx.blockEditHistory.create({
+        data: {
+          worldId: WORLD_ID,
+          revision: edit.revision + 1,
+          x,
+          y,
+          z,
+          materialBefore: by.materialBefore,
+          materialAfter: material,
+          editorId: by.editorId,
+          editorName: by.editorName ?? null,
+          editorKind: by.editorKind,
+          characterId: by.characterId ?? null,
+          runId: by.runId ?? null,
+        },
       });
     });
   }

@@ -34,7 +34,12 @@ import { GatewayAuth, installGatewaySocket } from './modules/gateway';
 import { createProviderRouter, providerRepository } from './modules/providers';
 import { consoleSync, createConsoleSyncRouter } from './modules/console-sync';
 import { createTaskRouter } from './modules/tasks';
-import { WorldRoom, createWorldRouter, getActiveWorld } from './modules/world';
+import {
+  WorldRoom,
+  bindEditAttribution,
+  createWorldRouter,
+  getActiveWorld,
+} from './modules/world';
 
 /**
  * 创建并装配服务器实例。
@@ -87,6 +92,9 @@ export async function createServer() {
     gracefullyShutdown: false,
   });
   server.define('world', WorldRoom);
+  const releaseEditAttribution = bindEditAttribution((sessionId) =>
+    characters.characterForSession(sessionId),
+  );
   server.onBeforeShutdown(() => characters.close());
   let closing: Promise<void> | undefined;
   let listening = false;
@@ -102,6 +110,7 @@ export async function createServer() {
           http.closeAllConnections();
           await once(http, 'close');
         }
+        releaseEditAttribution();
         consoleSync.reset();
         resetDatabaseClient(db);
         await db?.$disconnect();

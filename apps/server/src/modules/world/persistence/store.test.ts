@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { key, WORLD_ID, type Block, type Edit } from '@voxel/shared';
 import { createDatabaseClient } from '../../../core/database/client';
-import { WorldStore } from './store';
+import { WorldStore, type EditAttribution } from './store';
 
 vi.mock('../../../core/database/client', () => ({
   createDatabaseClient: vi.fn(),
@@ -10,9 +10,10 @@ vi.mock('../../../core/database/client', () => ({
 
 const world = { upsert: vi.fn(), updateMany: vi.fn() };
 const blockEdit = { upsert: vi.fn() };
+const blockEditHistory = { create: vi.fn() };
 const disconnect = vi.fn();
 const transaction = vi.fn(async (run: (tx: unknown) => Promise<void>) =>
-  run({ world, blockEdit }),
+  run({ world, blockEdit, blockEditHistory }),
 );
 const db = {
   world,
@@ -21,6 +22,14 @@ const db = {
   $disconnect: disconnect,
 } as unknown as PrismaClient;
 const edit: Edit = { x: 1, y: 2, z: 3, material: 'stone', revision: 7 };
+const by: EditAttribution = {
+  editorId: 'session-1',
+  editorName: 'Builder',
+  editorKind: 'agent',
+  characterId: 'char-1',
+  runId: 'run-1',
+  materialBefore: null,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,8 +72,8 @@ it('restores block edits and revision using a borrowed client without disconnect
   expect(disconnect).not.toHaveBeenCalled();
 });
 
-it('keeps revision CAS and block writes in one transaction', async () => {
-  await new WorldStore('', db).save(edit);
+it('keeps revision CAS, block write and history append in one transaction', async () => {
+  await new WorldStore('', db).save(edit, by);
   expect(transaction).toHaveBeenCalledOnce();
   expect(world.updateMany).toHaveBeenCalledWith({
     where: { id: WORLD_ID, revision: 7 },
@@ -72,17 +81,41 @@ it('keeps revision CAS and block writes in one transaction', async () => {
   });
   expect(blockEdit.upsert).toHaveBeenCalledWith({
     where: { worldId_x_y_z: { worldId: WORLD_ID, x: 1, y: 2, z: 3 } },
-    create: { worldId: WORLD_ID, x: 1, y: 2, z: 3, material: 'stone' },
-    update: { material: 'stone' },
+    create: {
+      worldId: WORLD_ID,
+      x: 1,
+      y: 2,
+      z: 3,
+      material: 'stone',
+      editedBy: 'Builder',
+    },
+    update: { material: 'stone', editedBy: 'Builder' },
+  });
+  expect(blockEditHistory.create).toHaveBeenCalledExactlyOnceWith({
+    data: {
+      worldId: WORLD_ID,
+      revision: 8,
+      x: 1,
+      y: 2,
+      z: 3,
+      materialBefore: null,
+      materialAfter: 'stone',
+      editorId: 'session-1',
+      editorName: 'Builder',
+      editorKind: 'agent',
+      characterId: 'char-1',
+      runId: 'run-1',
+    },
   });
 });
 
 it('rejects a revision conflict before writing block data', async () => {
   world.updateMany.mockResolvedValue({ count: 0 });
-  await expect(new WorldStore('', db).save(edit)).rejects.toThrow(
+  await expect(new WorldStore('', db).save(edit, by)).rejects.toThrow(
     'storage-conflict',
   );
   expect(blockEdit.upsert).not.toHaveBeenCalled();
+  expect(blockEditHistory.create).not.toHaveBeenCalled();
 });
 
 it('retains explicit memory mode without constructing a database client', async () => {
@@ -90,7 +123,7 @@ it('retains explicit memory mode without constructing a database client', async 
   const blocks = new Map<string, Block>();
   expect(store.mode).toBe('memory');
   expect(await store.load(blocks)).toBe(0);
-  await store.save(edit);
+  await store.save(edit, by);
   await store.close();
   expect(createDatabaseClient).not.toHaveBeenCalled();
   expect(transaction).not.toHaveBeenCalled();
