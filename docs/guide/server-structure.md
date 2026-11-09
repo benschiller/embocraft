@@ -19,12 +19,12 @@
 
 以下列出已落地的主要目录与文件，不是完整文件清单；部分测试和辅助文件省略。服务端使用仓库根部的 `tsconfig.json`。本轮目录与命名整理已完成，后续职责拆分应单独评估。
 
-数据库基础设施位于 `core/database/`，跨模块联合存档位于 `src/persistence/`，九个业务模块按职责组织领域规则、服务、存储和协议适配。原 `audio` 模块已拆分：ASR 归 `modules/asr`，TTS 与音色服务归 `modules/tts`，Agent 发声与空间信令归 `modules/world/services/`，两者共用的无状态音频基础设施归 `core/audio/`。模块之间通过各自的 `index.ts` 引用。具体兼容约定见仓库内的 `apps/server/README.md`。
+数据库基础设施位于 `core/database/`，跨模块联合存档位于 `src/persistence/`，九个业务模块按职责组织领域规则、服务、存储和协议适配。Floperati 分支已移除语音栈（`modules/asr`、`modules/tts`、`core/audio`、Agent 发声与空间信令）；数据库中的语音表与列保留但不再使用。模块之间通过各自的 `index.ts` 引用。具体兼容约定见仓库内的 `apps/server/README.md`。
 
 ```text
 apps/server/
 ├── prisma/                              # Prisma ORM 定义与迁移（PostgreSQL 全局领域存储）
-│   └── schema.prisma                    # 全局关系表定义（World/BlockEdit、Provider、Character、Task/Run、TTS/ASR）
+│   └── schema.prisma                    # 全局关系表定义（World/BlockEdit、Provider、Character、Task/Run；TTS/ASR 表保留未用）
 ├── package.json                         # 服务端运行时与依赖
 └── src/
     ├── index.ts                         # 服务进程入口（环境变量载入、CLI诊断、优雅停机）
@@ -60,17 +60,9 @@ apps/server/
     │   │   ├── swagger.test.ts          # 【静态门禁】基于 AST 验证 100% 路由覆盖率
     │   │   ├── openapi-schemas.ts       # 通用 DTO Schema 声明
     │   │   └── docs.routes.ts           # /api-docs 与 /api-docs.json UI 文档路由
-    │   ├── transport/                   # 网络传输复合多路复用底座
-    │   │   ├── socket-routes.ts         # Socket 路由契约（SocketHandler, SocketRoutes）
-    │   │   └── websocket.transport.ts   # RoutedWebSocketTransport（拦截升级，共享端口与心跳）
-    │   └── audio/                       # ASR/TTS 共用的无业务状态音频基础设施
-    │       ├── pcm-wav.ts               # PCM WAV 格式、时长与音量校验（无 I/O）
-    │       ├── normalize.ts             # 录音/合成音频 FFmpeg 规整与临时文件生命周期
-    │       ├── normalize.test.ts
-    │       ├── command.ts               # 子进程执行与可执行文件查找
-    │       ├── speaches-models.ts       # Speaches 模型与音色发现
-    │       ├── speaches-models.test.ts
-    │       └── voice-service-connection.ts # ASR/TTS 共用连接参数校验
+    │   └── transport/                   # 网络传输复合多路复用底座
+    │       ├── socket-routes.ts         # Socket 路由契约（SocketHandler, SocketRoutes）
+    │       └── websocket.transport.ts   # RoutedWebSocketTransport（拦截升级，共享端口与心跳）
     │
     ├── application/
     │   ├── management-persistence.ts    # 联合提交参与者、失败保护与通知的协调
@@ -96,7 +88,6 @@ apps/server/
         │   │   ├── character-snapshots.ts # 捕获运行时快照与判断保存失败影响
         │   │   ├── character-host.service.ts # 单智能体 Actor 宿主与执行上下文
         │   │   ├── wake-scheduler.service.ts # 定时与事件唤醒调度器
-        │   │   ├── voice-coordinator.service.ts # 语音协同调度服务
         │   │   ├── character-job.ts     # 托管运行时状态、集合与状态判定
         │   │   ├── execution-context.ts # 会话与 Runner 执行上下文契约
         │   │   ├── task-execution-adapter.ts # 将角色运行时状态适配为 Tasks 执行状态
@@ -111,56 +102,15 @@ apps/server/
         │   │   └── ai-characters.routes.ts
         │   └── index.ts                 # 模块对外面向 server.ts/app.ts 的唯一导出
         │
-        ├── asr/                         # ── 2. 语音识别（ASR） ──
-        │   ├── domain/                  # 领域模型与纯校验规则
-        │   │   ├── model.ts             # 实体定义、用途 (chat/spatial/clip) 与脱敏视图
-        │   │   └── validation.ts        # 百炼/Whisper 参数校验与通用服务组装
-        │   ├── ports.ts                 # 模块端口契约（BatchTranscriberPort、StreamingAsrPort 等）
-        │   ├── engines/                 # 外部语音识别引擎适配器
-        │   │   ├── whisper/             # Whisper 批处理适配器与模型目录探测
-        │   │   └── bailian/             # 阿里云百炼实时流式识别适配器与端点管理
-        │   ├── services/                # 识别与配置调度服务
-        │   │   ├── asr.service.ts       # AsrService / asrService：配置与识别占用
-        │   │   ├── realtime-asr.service.ts # 实时流识别并发与引擎桥接
-        │   │   ├── speech-scheduler.service.ts # 识别队列、超时与取消
-        │   │   └── transcript.ts        # Whisper 转写结果解析
-        │   ├── persistence/             # ASR 数据库适配
-        │   │   └── database-asr-services.ts
-        │   ├── routes/
-        │   │   ├── asr.routes.ts        # createAsrRouter()：零参挂载 capabilities/transcribe 与 /voice/asr/*
-        │   │   ├── transcribe.routes.ts # /voice/transcribe 音频转写
-        │   │   └── capabilities.routes.ts # /voice/capabilities 运行时能力探针
-        │   ├── sockets/
-        │   │   └── asr.socket.ts        # /voice/asr/realtime 实时流式识别
-        │   └── index.ts                 # createAsrRouter、AsrService、asrService、installAsrSocket、LocalSpeech 等
-        │
-        ├── tts/                         # ── 2b. 语音合成（TTS）与音色服务 ──
-        │   ├── services/
-        │   │   ├── tts.service.ts       # TtsService / ttsService：无状态配置、试听与合成服务
-        │   │   ├── piper.service.ts     # PiperTts 合成
-        │   │   ├── remote.service.ts    # RemoteTts 远程合成
-        │   │   ├── piper-models.service.ts # Piper 模型就绪查询
-        │   │   └── speech-synthesizer.ts # 合成接口与结果类型
-        │   ├── persistence/
-        │   │   └── database-voice-services.ts
-        │   ├── routes/
-        │   │   └── tts.routes.ts        # createTtsRouter()：零参挂载 /voice/tts 管理与试听路由
-        │   └── index.ts                 # createTtsRouter、TtsService、ttsService、PiperTts 等
-        │
-        ├── chat/                        # ── 3. 世界聊天与空间语音中继 ──
+        ├── chat/                        # ── 3. 世界文字聊天 ──
         │   ├── domain/
         │   │   └── visibility.ts        # 按消息范围、发送者与接收者判断可见性（纯函数）
         │   ├── services/
         │   │   ├── chat.service.ts           # 聊天室核心服务
-        │   │   ├── credentials.service.ts    # 玩家防伪临时凭据服务（ChatCredentials）
-        │   │   ├── audio-clips.service.ts    # 录音切片缓存服务
-        │   │   ├── spatial-speech.service.ts # 空间化语音广播服务
-        │   │   ├── speech.service.ts         # 聊天 ASR 协调、上传槽位与票据生命周期
-        │   │   └── speech.service.test.ts
-        │   ├── routes/
-        │   │   ├── chats.routes.ts       # 聊天消息收发与历史查询
-        │   │   └── chats.routes.test.ts
-        │   └── index.ts                 # 导出 installChatRoutes 等
+        │   │   └── credentials.service.ts    # 玩家防伪临时凭据服务（ChatCredentials）
+        │   ├── persistence/
+        │   │   └── chat-store.ts         # 玩家与聊天消息数据库记录
+        │   └── index.ts                 # 导出 WorldChat、ChatStore、visibleEvent
         │
         ├── gateway/                     # ── 4. 管理网关鉴权与安全通道 ──
         │   ├── auth.service.ts          # 管理令牌与浏览器来源校验（GatewayAuth）
@@ -244,10 +194,10 @@ apps/server/
 ### 2.1 模块标准分层拓扑
 
 - **`domain/`（领域规则与实体）**：实体契约、计算与无网络/文件/数据库 I/O 的校验，可复用通用类型、`AppError` 与 `core/http/validation.ts` 中的纯值校验函数。现有规则中包含 UUID 生成，因此并非所有函数都是确定性纯函数；规则测试无需 I/O Mock。
-- **`services/`（业务流程与调度引擎）**：核心业务调度、状态机协调、外部厂商引擎适配（如 Whisper/Piper/百炼）。
+- **`services/`（业务流程与调度引擎）**：核心业务调度、状态机协调、外部厂商引擎适配（如模型供应商）。
 - **`persistence/`（可选，状态持久化）**：若模块持有独立持久化数据，其数据库访问严格内聚于此（如 `store.ts` 与 `database-repository.ts`）；测试替身位于 `test/helpers/`。
 - **`routes/`（HTTP API 路由）**：模块对外的所有 REST 接口声明，统一命名为 `*.routes.ts`，由 `src/app.ts` 集中挂载。
-- **`sockets/`（可选，WebSocket 端点）**：若模块提供对外实时流式通信（如 `asr`, `gateway`），统一放入 `sockets/` 目录或按规范命名为 `*.socket.ts`。
+- **`sockets/`（可选，WebSocket 端点）**：若模块提供对外实时流式通信（如 `gateway`），统一放入 `sockets/` 目录或按规范命名为 `*.socket.ts`。
 - **`ports.ts`（可选，依赖端口抽象）**：外部依赖契约反转接口，实现 Clean Architecture 解耦。
 - **`index.ts`（必须，唯一门面导出）**：模块对外的唯一公开出口，严禁外部做跨模块深层相对路径导入。
 
@@ -284,7 +234,7 @@ export function createWorldRouter(): Router {
 
 ### 2.4 统一的 WebSocket 安装契约
 
-包含独立 WebSocket 终端的模块（如 `gateway`, `asr`），统一提供安装函数，由 `src/server.ts` 注册到传输层路由表中：
+包含独立 WebSocket 终端的模块（如 `gateway`），统一提供安装函数，由 `src/server.ts` 注册到传输层路由表中：
 
 ```typescript
 // apps/server/src/modules/gateway/gateway.socket.ts
@@ -324,10 +274,7 @@ import {
 import { createProviderRouter } from './modules/providers';
 import { createTaskRouter } from './modules/tasks';
 import { createConsoleSyncRouter } from './modules/console-sync';
-import { createAsrRouter, installAsrSocket } from './modules/asr';
-import { createTtsRouter } from './modules/tts';
 import { createWorldRouter, WorldRoom } from './modules/world';
-import { createChatRouter } from './modules/chat';
 import { GatewayAuth, installGatewaySocket } from './modules/gateway';
 ```
 
@@ -340,15 +287,15 @@ import { GatewayAuth, installGatewaySocket } from './modules/gateway';
 ### 4.1 Prisma 与 PostgreSQL 持久化与健康检查策略
 
 - **统一数据库基础设施（`core/database/client.ts`）**：
-  统一由 `createDatabaseClient` 使用 `@prisma/adapter-pg` 创建连接池与 PrismaClient，不使用进程级单例。`createServer` 拥有一个运行时客户端，并注入默认的 World、Provider、联合存档与 TTS/ASR 存储；在 Agent、房间和网络连接停止后统一断开。业务模块不得直接构造 PrismaClient 或 Pg 连接池。
+  统一由 `createDatabaseClient` 使用 `@prisma/adapter-pg` 创建连接池与 PrismaClient，不使用进程级单例。`createServer` 拥有一个运行时客户端，并注入默认的 World、Provider、联合存档与聊天存储；在 Agent、房间和网络连接停止后统一断开。业务模块不得直接构造 PrismaClient 或 Pg 连接池。
   `WorldStore(url)` 保留独立连接的创建和关闭行为，`WorldStore('')` 保留显式内存模式；`WorldStore(url, db)` 借用注入的客户端，房间调用其 `close()` 时不会断开共享连接，释放责任属于注入方。
 - **启动前全量探活与阻断门禁（`core/database/health.ts`）**：
-  在系统分配网络端口与 Colyseus 房间创建前，必须执行只读查询（依次检查 `world`、`agentProvider`、`agentCharacter`、`ttsProvider`、`asrProvider` 等关键表）进行探活；若数据库未准备好或未完成迁移，立即阻断启动，防止 Colyseus 抛出二次崩溃。
-  探活通过统一工厂创建独立短连接，并在成功或失败后释放；运行时客户端在探活与语音配置校验通过后创建。目录加载失败会释放运行时客户端，监听或房间启动失败走服务器的统一关闭流程。
+  在系统分配网络端口与 Colyseus 房间创建前，必须执行只读查询（依次检查 `world`、`agentProvider`、`agentCharacter`、`agentPlan`、`agentRun` 等关键表）进行探活；若数据库未准备好或未完成迁移，立即阻断启动，防止 Colyseus 抛出二次崩溃。
+  探活通过统一工厂创建独立短连接，并在成功或失败后释放；运行时客户端在探活通过后创建。目录加载失败会释放运行时客户端，监听或房间启动失败走服务器的统一关闭流程。
 - **连接异常安全脱敏**：
   数据库异常信息必须通过 `databaseStartupMessage` 进行过滤清洗，**绝不允许将带有数据库用户名、密码凭据的原始连接串输出到终端或网络响应中**；对于本地开发场景（`127.0.0.1:55432`），输出友好的修复提示（如 `node scripts/database.mjs`）。
 - **强依赖保障与防隐式降级（Fail-Fast Enforcement）**：
-  - 系统核心状态（World、Agent、Provider、TTS/ASR 等）全面依赖关系型持久化，**必须配置 `DATABASE_URL`**；
+  - 系统核心状态（World、Agent、Provider、Task 等）全面依赖关系型持久化，**必须配置 `DATABASE_URL`**；
   - 若未配置 `DATABASE_URL` 或连接检查失败，系统严格抛错终止启动，并输出明确的修复指导（如 `node scripts/database.mjs` 或 `pnpm db:migrate`），**绝不静默吞错，也不会自动切换到内存模式**，杜绝无持久化下的数据隐式丢失。
 - **方块编辑乐观版本控制（CAS）**：
   `BlockEdit` 实体采用 `[worldId, x, y, z]` 复合主键，与 `World.revision` 协同工作，防止多人并发修改时的数据覆盖破坏。
@@ -364,7 +311,7 @@ import { GatewayAuth, installGatewaySocket } from './modules/gateway';
 - **角色 HTTP 查询（`ai-characters/persistence/queries.ts`）**：
   - 路由通过注入的查询接口获取角色列表、详情和日志分页；配置、当前执行、待执行任务、用量和日志都来自数据库，只有连接 ID 和事件版本由路由补充。关联读取使用 `RepeatableRead` 事务；角色快照不再维护 HTTP 响应缓存。写操作在 `flush(since)` 成功后复用数据库查询返回结果。
 - **离线测试与恢复验证（`test/helpers/memory-storage.ts` / `src/persistence/migrate-archive.ts`）**：
-  - 测试显式注入内存 Provider、角色存档与 TTS/ASR 配置存储；读写时复制数据，重新创建服务实例验证恢复，并注入保存失败验证回滚。
+  - 测试显式注入内存 Provider 与角色存档；读写时复制数据，重新创建服务实例验证恢复，并注入保存失败验证回滚。
   - `migrate-archive.ts` 负责 v3 存档结构校验与规整；旧文件读写、自动备份与 v0/v1/v2 历史版本兼容已移除。
 
 ---
@@ -414,21 +361,9 @@ graph LR
 
 ---
 
-## 7. 全双工音频管线与会话协议（Audio Pipeline & Spatial Signaling）
+## 7. 语音栈（已移除）
 
-音频能力按职责拆分为共享基础设施、ASR、TTS 与世界内语音协作四部分，依赖方向为 `world/chat → asr/tts → core/audio`，`tts` 不依赖 `asr`：
-
-- **共享音频基础设施（`core/audio/`）**：
-  `pcm-wav.ts` 在内存中校验 PCM WAV 格式、时长与音量，复用通用 `AppError` 保留错误状态、文案及 `no-speech` 代码；`normalize.ts` 协调 FFmpeg 转换、临时文件及 PCM 校验，`command.ts` 负责子进程执行；`speaches-models.ts` 与 `voice-service-connection.ts` 提供 Speaches 模型发现和连接参数校验。默认语音服务地址统一由 `core/config/env.ts` 解析。该目录只依赖 `core`。
-- **ASR 模块（`modules/asr/`）**：
-  `engines/` 保留 `LocalSpeech`（`localSpeech`）的 Whisper 识别与 `bridgeBailianAsr`/OpenAI/Gemini 流式协议；`services/` 负责 `AsrService`（`asrService`）、`RealtimeAsrService` 与 `SpeechScheduler`/`scheduleSpeech` 的队列管理；`persistence/` 负责数据库适配；`routes/asr.routes.ts` 的零参 `createAsrRouter()` 挂载 `capabilities → transcribe → asr` 路由，管理鉴权由 `server.ts` 前置；`sockets/asr.socket.ts` 的 `installAsrSocket` 注册 `/voice/asr/realtime`。`/voice/capabilities` 经 `tts` 门面读取 `PiperModels` 状态。
-- **TTS 模块（`modules/tts/`）**：
-  `services/` 保留 `TtsService`（`ttsService`）、`PiperTts`、`RemoteTts`、`PiperModels` 与 `SpeechSynthesizer` 契约，不在模块内持有世界会话绑定状态；删除保护与音色更新通知通过 `core/events/domain-events.ts` 事件总线及 PostgreSQL 外键约束完成；`persistence/` 负责数据库适配；`routes/tts.routes.ts` 的零参 `createTtsRouter()` 直接调用 `ttsService`，由 `server.ts` 经 management 管线挂载 `/voice/tts`。
-- **世界内语音协作（`modules/world/services/`）**：
-  `agent-speech.service.ts` 保留 `AgentSpeech` 的队列、听众筛选、取消与音频缓存，由 `WorldRoom` 装配；聊天路由只依赖本地声明的 `AgentSpeechClips` 读取契约，避免 `chat → world` 循环依赖。`spatial-signaling.service.ts` 提供 WebRTC 信令校验与转发。
-- 两个 Store 仍包含原有校验与运行时协调职责；鉴权、Origin 策略、JSON/原始音频限制、装配顺序、识别占用、音色绑定、删除保护及连接生命周期保持不变。
-- **空间音频信令与听觉可见性解耦**：
-  `world/services/spatial-signaling.service.ts` 的 `createSpatialSignaling` 由 `WorldRoom` 调用，通过世界房间消息转发 WebRTC 协商数据，不注册独立的 `spatial.socket.ts` 端点。空间信令负责 WebRTC Peer 媒体协商；声音的距离衰减、朝向增益与声像由 `@voxel/shared` 的 `spatialMix` 计算，`chat/services/spatial-speech.service.ts` 据此筛选听众并管理语音票据。`chat/domain/visibility.ts` 只按消息范围、发送者与接收者判断消息是否对玩家可见，不执行距离衰减计算。
+Floperati 分支删除了全部语音能力：语音识别（ASR）、语音合成（TTS）、音频规整、语音留言、附近空间转写、Agent 语音回复与点对点空间语音信令。`spatial.state`、`spatial.signal` 与 `agent.voice` 动作现返回 `unknown-action`。Prisma 中的 `TtsProvider`、`AsrProvider`、`AsrAssignment` 表及角色的 `voiceReplies`/`voiceServiceId` 列保留（无破坏性迁移），但服务端不再读写。
 
 ---
 
@@ -448,7 +383,7 @@ graph LR
 
 ### 8.3 端口契约与内存测试桩（In-Memory Test Doubles）
 
-- 服务层测试依赖持久化时，优先使用对应端口契约（Port）的内存测试桩（如 `InMemoryProviderRepository` 或 `MockSpeech`）；
+- 服务层测试依赖持久化时，优先使用对应端口契约（Port）的内存测试桩（如 `InMemoryProviderRepository`）；
 - 数据库健康探测测试（如 `health.test.ts`）通过 Vitest 针对 `@prisma/client` 进行适配器级桩测试，验证各类报错分支的脱敏输出。
 
 ### 8.4 架构边界回归检查
@@ -466,7 +401,7 @@ graph LR
 ### 9.2 严格安全中间件链
 
 - **`origin-guard.ts`**：严格校验请求 Origin 头是否在配置的白名单范围内，防御 CSRF 攻击；
-- **`require-json.ts`**：挂载该守卫的路由对 POST/PUT 要求 `Content-Type: application/json`，否则返回 415；音频上传使用各自的原始请求体策略，不受此 JSON 规则概括；
+- **`require-json.ts`**：挂载该守卫的路由对 POST/PUT 要求 `Content-Type: application/json`，否则返回 415；
 - **`errorHandler`**：统一拦截全局异常。非业务预期的未知系统异常统一遮蔽为友好文案，生产环境完全隐藏堆栈细节。
 
 ### 9.3 确定性启动与逆序优雅停机（Startup & Reverse Shutdown）
@@ -476,7 +411,7 @@ graph LR
 1. 校验与加载强类型环境变量（`env.load()`）；
 2. 数据库探活（`checkStartupDatabase()`），遇错脱敏中断；
 3. 创建运行时数据库客户端；
-4. 用网关配置同步构造 `GatewayAuth`，装配服务、HTTP 和 Socket。Provider、TTS 与 ASR 在使用时查询数据库。
+4. 用网关配置同步构造 `GatewayAuth`，装配服务、HTTP 和 Socket。Provider 在使用时查询数据库。
 5. 启动 HTTP 服务并在同端口绑定升级 WebSocket 路由器；
 6. 启动 Colyseus 房间引擎，依据已保存的快照恢复并自动唤醒智能体。
 
@@ -486,7 +421,7 @@ graph LR
 2. 停止所有 Agent 唤醒定时器与正在执行的行动循环；
 3. 由 Agent 关闭流程提交需要保存的最终状态，调用 `ManagementPersistence.flush()` 等待已排队的保存完成并检查失败状态；
 4. 优雅关闭 Colyseus 世界房间并断开玩家网络连接；
-5. 主动切断 ASR 与 Gateway 升级的长连接；
+5. 主动切断 Gateway 升级的长连接；
 6. 关闭 HTTP 监听并销毁全部存活的 TCP 连接；
 7. 最终断开 PostgreSQL 连接池并退出进程。
 

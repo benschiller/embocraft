@@ -19,8 +19,6 @@ export type ExecutionContext = {
     ) => RuntimeModelOptions;
   };
   closing: () => boolean;
-  bindVoice: (job: Job) => Promise<void>;
-  unbindVoice: (sessionId: string) => void;
   controlMessage: (
     id: string,
     op: 'pause' | 'cancel',

@@ -91,13 +91,6 @@ export function validateAICharacter(
       21600000,
     ),
     intervalMs: integer(input.intervalMs, '轮次间隔', 3000, 1000, 60000),
-    voiceReplies: boolean(input.voiceReplies, false),
-    voiceServiceId: text(
-      input.voiceProviderId ?? input.voiceServiceId,
-      '语音服务',
-      80,
-      input.voiceReplies ? 'local-default' : '',
-    ),
   };
 }
 

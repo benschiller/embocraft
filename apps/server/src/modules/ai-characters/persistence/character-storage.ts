@@ -49,8 +49,6 @@ function configuration(record: CharacterRecord, position: number) {
     maxTokens: record.maxTokens ?? null,
     permissions: json(record.permissions),
     skills: json(record.skills),
-    voiceReplies: record.voiceReplies ?? null,
-    voiceServiceId: record.voiceServiceId || null,
     thinking: record.thinking ?? null,
     reasoningEffort: record.reasoningEffort ?? null,
     createdAt:

@@ -6,7 +6,7 @@
 
 - **系统类型**：本地单进程、单房间、权威物理同步的轻量体素多 Agent 协作沙盒原型系统。
 - **空间规格**：世界水平网格尺寸为 **49×49**（坐标闭区间 `[-24, 24]`），垂直高度上限为 **15**。
-- **持久化分层**：PostgreSQL 保存方块增量编辑、模型供应商、Agent 角色与任务及 TTS/ASR 服务配置；玩家位置、事件环形缓存及聊天录音暂不持久化至数据库。服务启动需要可用的数据库。
+- **持久化分层**：PostgreSQL 保存方块增量编辑、模型供应商、Agent 角色、任务与聊天文字记录；玩家位置与事件环形缓存暂不持久化至数据库。服务启动需要可用的数据库。
 - **并发容量**：单世界最多支持 16 个并发活跃网络会话（真人或 Agent）。
   :::
 
@@ -19,7 +19,7 @@
 ```
 embocraft/
 ├── apps/
-│   ├── web/               # 前端：React 19 + Three.js 体素渲染 + WebRTC/Web Audio
+│   ├── web/               # 前端：React 19 + Three.js 体素渲染
 │   └── server/            # 服务端：Colyseus 0.16 权威世界 + Express + Prisma ORM
 ├── packages/
 │   ├── shared/            # 跨端共享：网络协议定义、确定性地形算法、AABB 物理碰撞
@@ -33,8 +33,8 @@ embocraft/
 
 | 包路径                       | 命名空间               | 关键职责与技术选型                                                                                                          |
 | :--------------------------- | :--------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
-| **`apps/web`**               | `@voxel/web`           | 基于 React 19 构建游戏 HUD、管理控制台；通过 Three.js 实例化网格（InstancedMesh）高效渲染体素，接入 WebRTC 与 3D 空间音频。 |
-| **`apps/server`**            | `@voxel/server`        | 负责 20Hz 权威房间模拟、方块编辑 CAS 乐观锁写入、Whisper/Piper 语音中继分发、管理网关与任务计划调度。                       |
+| **`apps/web`**               | `@voxel/web`           | 基于 React 19 构建游戏 HUD、管理控制台；通过 Three.js 实例化网格（InstancedMesh）高效渲染体素。 |
+| **`apps/server`**            | `@voxel/server`        | 负责 20Hz 权威房间模拟、方块编辑 CAS 乐观锁写入、管理网关与任务计划调度。                       |
 | **`packages/shared`**        | `@voxel/shared`        | 纯 TypeScript 跨端库，零外部重量依赖。包含世界常量、确定性噪声地形生成器、物理 AABB 包围盒判定及协议白名单。                |
 | **`packages/agent-runtime`** | `@voxel/agent-runtime` | 封装 Agent 与世界的连接、三维空间密集 A\* 寻路、双层观察空间转换、模型思考轮次调度与连续动作执行器。                        |
 
@@ -54,7 +54,7 @@ graph TD
     Gateway --> Express[HTTP REST API / OpenAPI]
     Gateway --> Colyseus[Colyseus 0.16 WebSocket 权威房间]
     Gateway --> SSE[SSE /world/presence 状态流]
-    Gateway --> ASR_WS[ASR 实时语音 WebSocket]
+    Gateway --> MGMT_WS[管理网关 WebSocket]
 
     Express & Colyseus --> Domains[领域业务模块 Modules]
 
@@ -62,9 +62,7 @@ graph TD
         Domains --> WorldMod[world: 权威房间与物理状态]
         Domains --> AgentMod[ai-characters: 角色状态机与模型调用]
         Domains --> TaskMod[tasks: 计划编排与执行实例]
-        Domains --> AsrMod[asr: ASR 语音识别]
-        Domains --> TtsMod[tts: TTS 合成与音色服务]
-        Domains --> ChatMod[chat: 消息路由与空间音频]
+        Domains --> ChatMod[chat: 文字消息路由与私聊过滤]
     end
 
     Domains --> Storage[持久化适配器 Persistence]
@@ -76,19 +74,17 @@ graph TD
 | 模块目录                    | 领域职责与关键抽象                                                                  |
 | :-------------------------- | :---------------------------------------------------------------------------------- |
 | **`modules/world`**         | 维护 Colyseus 房间状态、方块修改队列、乐观版本锁（CAS）与世界全量快照生成。         |
-| **`modules/ai-characters`** | 统一管理游戏内 AI 角色配置、模型供应商绑定、上线待命及自主发声状态。                |
+| **`modules/ai-characters`** | 统一管理游戏内 AI 角色配置、模型供应商绑定、上线待命状态。                |
 | **`modules/tasks`**         | 实现任务计划（Plan）与运行实例（Run）的分层管理，提供取消、暂停、恢复与检查点追踪。 |
-| **`modules/asr`**           | Whisper 与阿里云百炼语音识别、识别调度、转写接口与实时 ASR WebSocket。              |
-| **`modules/tts`**           | Piper 本地引擎、OpenAI-Compatible/远程 TTS 合成与音色服务管理。                     |
-| **`modules/chat`**          | 管理公开群聊广播、私信 ACL 过滤、WebRTC 空间信令代理与附近语音流式转写。            |
+| **`modules/chat`**          | 管理公开群聊广播与私信 ACL 过滤。                                                   |
 | **`modules/gateway`**       | 提供管理员 Bearer 鉴权、CORS 校验与全双工管理通知 WebSocket。                       |
 
 ### 服务端生命周期管理
 
 - **`createApp()`**：纯函数式组装 Express 应用中间件及业务路由，不触发端口监听或数据库连接，专供单元与路由测试使用。
-- **`createServer()`**：系统装配中心，加载环境变量、初始化数据库客户端、装配 Colyseus 房间、Agent 运行时与音频队列。
+- **`createServer()`**：系统装配中心，加载环境变量、初始化数据库客户端、装配 Colyseus 房间与 Agent 运行时。
 - **`listen()`**：绑定端口、加载世界存档并触发已保存 Agent 的自动唤醒与上线。
-- **`close()`**：幂等且安全的优雅停机函数。按顺序停止 Agent 调度、关闭 Colyseus 房间、终止 ASR 长连接、断开数据库连接并释放内存资源。
+- **`close()`**：幂等且安全的优雅停机函数。按顺序停止 Agent 调度、关闭 Colyseus 房间、终止管理网关长连接、断开数据库连接并释放内存资源。
 
 ---
 
@@ -99,13 +95,11 @@ graph TD
 ```
 apps/web/src/
 ├── features/
-│   ├── console/            # 管理控制台：AI 角色配置、任务列表、语音服务面板
-│   ├── chat/               # 多模态聊天：群聊/私信切换、@ 自动补全、录音草稿
+│   ├── console/            # 管理控制台：AI 角色配置、任务列表、模型服务
+│   ├── chat/               # 文字聊天：群聊/私信切换、@ 自动补全
 │   ├── hud/                # 游戏 HUD：准星、材质快捷栏、按键引导、顶部状态栏
-│   ├── voice/              # 附近空间语音：麦克风/收听开关、Web Audio 声相调节
 │   └── world/              # 玩家感知：实时在线列表、重连提示
-├── graphics/               # 渲染管线：Three.js 场景、体素网格、角色模型、3D 头顶字幕
-├── audio/                  # 音频设施：Web Audio API 上下文、PCM Worklet 录音采集器
+├── graphics/               # 渲染管线：Three.js 场景、体素网格、角色模型
 └── network/                # 通信设施：Colyseus 客户端封装、API 请求端点与 SSE 订阅
 ```
 
@@ -113,12 +107,7 @@ apps/web/src/
 
 1. **控制器模式（Controller Pattern）**：
    - 复杂界面状态统一由自定义 Hook 控制器收敛（如 `useConsoleController`、`useChatController`），UI 组件仅作为纯展示层接收状态与回调。
-2. **三维空间音效与 3D 字幕映射**：
-   - 空间音频衰减计算由 `features/voice` 结合玩家实时坐标执行；
-   - 3D 头顶字幕气泡利用 Three.js 的矩阵变换，将体素模型头部坐标动态映射至屏幕二维坐标系，兼顾沉浸感与字体清晰度。
-3. **音频 Worklet 物理隔离**：
-   - PCM 采集采用 `AudioWorkletNode` 在独立音频渲染线程中执行，彻底避免主线程 UI 渲染卡顿引发的丢帧爆音。
-4. **重型模块按需加载**：
+2. **重型模块按需加载**：
    - 管理控制台通过 `React.lazy` + `Suspense` 独立分包，仅在首次打开时下载，关闭后保持挂载以保留界面状态；
    - i18n 词条按语言拆分为独立 chunk，首屏只加载当前语言，切换语言时再按需拉取其余词典。
 
@@ -131,7 +120,7 @@ apps/web/src/
 ```mermaid
 graph TD
     Static[1. 静态质量检查: ESLint / Prettier / TypeScript Strict] --> Unit[2. 纯算法与单元测试: 地形生成 / 物理碰撞 / 协议校验]
-    Unit --> Domain[3. 领域集成测试: 语音服务 / 任务调度 / CAS 持久化]
+    Unit --> Domain[3. 领域集成测试: 任务调度 / CAS 持久化]
     Domain --> E2E[4. 端到端多客户端模拟: 随机端口 / 双客户端 + 脚本 Agent 并发联调]
 ```
 

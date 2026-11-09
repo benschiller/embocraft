@@ -1,5 +1,5 @@
 import { AgentRuntimeError, type AgentConfig } from '@voxel/agent-runtime';
-import { aiCharacterPermissions, type AICharacterView } from '@voxel/shared';
+import type { AICharacterView } from '@voxel/shared';
 
 import { resolveInferenceDefaults, type SavedProvider } from '../../providers';
 import {
@@ -74,13 +74,7 @@ export class AICharacterHost {
           handleWorldEvent(event, job, session, ctx, log);
         };
 
-        session.room.onMessage(
-          'agent.speech.error',
-          (value: { message: string }) => log(`语音：${value.message}`),
-        );
-
         session.room.onLeave(() => {
-          ctx.unbindVoice(session.room.sessionId);
           if (job.session !== session) return;
           job.session = undefined;
           job.runtime.disconnect();
@@ -95,13 +89,6 @@ export class AICharacterHost {
 
         log('已加入世界。');
       }
-
-      const voiceResult = await job.session.request('agent.voice', {
-        enabled:
-          !!job.view.voiceReplies && aiCharacterPermissions(job.view).chat,
-      });
-      await ctx.bindVoice(job);
-      if (!voiceResult.ok) log('语音回复开关未生效，请检查服务器版本。');
 
       if (!job.abort.signal.aborted && run) {
         job.view.status = 'running';

@@ -59,7 +59,6 @@ export function agentConfig(
       place: options['allow-edits'] === 'true',
       remove: options['allow-edits'] === 'true',
     },
-    voiceReplies: options['voice-replies'] === 'true',
     maxTurns: integer('max-turns', 100, 1, 1000),
     tokenBudget: integer('token-budget', 50000, 1000, 100000000),
     taskTimeoutMs: integer('task-timeout-ms', 900000, 1000, 21600000),
@@ -88,7 +87,6 @@ function cliOptions(): Record<string, string | undefined> {
         'thinking',
         'timeout-ms',
         'token-budget',
-        'voice-replies',
       ].map((name) => [name, { type: 'string' as const }]),
     ),
   }).values;

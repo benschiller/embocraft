@@ -13,7 +13,6 @@ function config(overrides: Partial<AgentConfig> = {}): AgentConfig {
     model: 'deepseek-flash',
     goal: '观察附近环境并回应玩家。',
     permissions: { move: true, chat: true, place: false, remove: false },
-    voiceReplies: false,
 
     intervalMode: 'fixed',
     intervalMinMs: 4000,

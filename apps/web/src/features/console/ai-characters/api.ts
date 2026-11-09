@@ -41,12 +41,4 @@ export const aiCharactersApi = {
     consoleFetch<void>(`/ai-characters/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }),
-  setVoiceReplies: (id: string, enabled: boolean) =>
-    consoleFetch<PublicAICharacterView>(
-      `/ai-characters/${encodeURIComponent(id)}/voice`,
-      {
-        method: 'POST',
-        body: { enabled },
-      },
-    ),
 };

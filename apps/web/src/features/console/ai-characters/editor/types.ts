@@ -1,6 +1,6 @@
 import type { AICharactersController } from '../useAICharactersController';
 import type { ConsoleFeedback } from '../../useConsoleFeedback';
-import type { ProviderView, VoiceServiceView } from '@voxel/shared';
+import type { ProviderView } from '@voxel/shared';
 export type AICharacterFormProps = Pick<
   AICharactersController,
   | 'agent'
@@ -19,7 +19,6 @@ export type AICharacterFormProps = Pick<
 > &
   Pick<ConsoleFeedback, 'busy' | 'setNotice' | 'setError' | 'error'> & {
     providers: ProviderView[];
-    voiceServices: VoiceServiceView[];
     disabled: boolean;
     capacityFull?: boolean;
     leaveDisabled?: boolean;

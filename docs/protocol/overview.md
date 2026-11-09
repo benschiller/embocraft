@@ -1,12 +1,11 @@
 # 协议与扩展边界
 
-本文档系统梳理 Agent Voxel World 的网络通信协议、权威物理与动作规范、空间感知边界、状态持久化机制以及语音/聊天扩展流。
+本文档系统梳理 Agent Voxel World 的网络通信协议、权威物理与动作规范、空间感知边界、状态持久化机制以及聊天协议。
 
 ::: tip 协议架构原则
 
 - **世界权威协议**：通过 Colyseus WebSocket 维护房间状态与 20Hz 权威物理模拟。
 - **Agent 管理协议**：独立于世界协议，统一采用携带 Bearer 令牌的 REST/WebSocket 网关（详见 [Agent Gateway](/agent/gateway.md)）。
-- **空间语音流**：P2P 实时空间音频走 WebRTC 数据通道，信令与离线片段识别经由权威服务校验。
   :::
 
 ---
@@ -80,7 +79,6 @@ interface ActionMessage {
 ### 频率限制与安全配额
 
 - **普通动作与同步**：每个连接每秒最多 **45 次** 请求（超过将丢弃或返回限流）。
-- **空间语音信令**：每个连接每秒最多 **120 次** 信令交互。
 - **单包体积上限**：WebSocket 单个数据包最大 **16 KB**。
 
 ### 动作指令全集
@@ -91,8 +89,6 @@ interface ActionMessage {
 | **`edit`**            | `{ x, y, z, material, revision }`<br>`material`: `grass`/`dirt`/`stone`/`wood`/`null` | 乐观并发修改方块（`null` 表示摧毁）。成功后广播 `edit` 事件并推进全局 `revision`。                |
 | **`chat`**            | `{ text, scope?, recipients? }`<br>字符长度限制 `1..240`                              | 支持 `public`（公开）与 `private`（私聊）。私聊仅投递给指定会话，广播带过滤机制。                 |
 | **`observe`**         | `{}`                                                                                  | 返回结构化感知快照 `observation`（包含角色自身、周围实体、附近方块、全局版本与可用动作）。        |
-| **`voice.start`**     | `{ text, provider? }`<br>字符长度限制 `1..240`                                        | 触发语音朗读/合成。事件仅向当前会话投递，支持 `mock`、`browser`、`ollama` 等提供者。              |
-| **`voice.interrupt`** | `{}`                                                                                  | 即刻打断当前正在进行的语音播放与模型生成，广播 `interrupted` 事件。                               |
 
 ### 版本控制与乐观并发冲突（CAS）
 
@@ -162,40 +158,14 @@ Agent 的 `goto` 与 `follow` 属于 Agent Runtime 的客户端复合宏动作�
 
 ---
 
-## 语音交互适配层
-
-`VoiceProvider` 为多平台语音合成与识别提供统一抽象层：
-
-```typescript
-interface VoiceProvider {
-  create(emit: (event: VoiceEvent) => void): VoiceSession;
-}
-
-interface VoiceSession {
-  push(input: VoiceInput): Promise<void>;
-  interrupt(): void;
-  close(): void;
-}
-```
-
-### 会话生命周期与隔离
-
-- **连接独立**：每个连接维护专属的 `VoiceSession` 实例。发起新 `voice.start` 会主动打断并终结上一个会话。
-- **RequestId 溯源**：跨请求通过动作 `requestId` 追踪关联，避免会话切换导致的乱序响应。
-- **打断响应**：触发 `voice.interrupt` 即刻切断模型推理与底层定时器，晚于打断到达的下行音频一律作废丢弃。
-- **状态流转**：服务端 `idle` 仅代表文字或音频数据生成完毕，实际界面动画状态由浏览器本地朗读播放结束回调最终接管。
-
----
-
-## 聊天音频与空间语音协议
+## 聊天协议
 
 ### 消息范围与权限模型
 
-聊天支持两种基础范围与一种空间衍生范围：
+聊天支持两种范围：
 
 1. **公开聊天 (`public`)**：全服广播，无特殊限制。
 2. **私信聊聊 (`private`)**：必须提供 `1..8` 个互不重复、当前在线且非发送者自身的玩家会话 ID。私聊数据仅发向目标玩家，房间其他玩家及未授权 Agent 的 `observe` 无法获取该记录。
-3. **附近空间转写 (`nearby`)**：系统通过空间声学模型判定的局域广播，用于附近语音字幕。
 
 ### 凭证安全验证（`chat.auth`）
 
@@ -210,59 +180,8 @@ interface VoiceSession {
 }
 ```
 
-- **HTTP 音频调用**：所有 `/chat/*` 路由均强制要求配置的 `WEB_ORIGIN` 与请求头 `Authorization: Bearer <token>`。
+- **用途**：Floperati 分支已移除语音栈，当前没有 `/chat/*` HTTP 路由；令牌仅保留以维持客户端协议兼容。
 - **令牌实效性**：玩家退出房间或会话重置后令牌立即作废。严禁将该 Token 放入 URL 查询参数。
-
-### WebRTC 点对点空间对讲
-
-真人之间的近距离实时语音通过 WebRTC 进行 P2P 直连传输：
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Alice as 真人 A
-    participant Server as Colyseus 信令代理
-    actor Bob as 真人 B
-    Alice->>Server: spatial.state { sending: true, listening: true }
-    Alice->>Server: spatial.signal { to: Bob, description: SDP }
-    Note over Server: 验证目标为在线真人<br>封装发送者 ID，拦截超限 SDP
-    Server->>Bob: spatial.signal { from: Alice, description: SDP }
-    Bob->>Alice: WebRTC P2P 建立连接，直通音频流
-```
-
-- **信令安全**：游戏服务端仅充当信令穿透代理，严格校验并封装 `from` 身份，限制 SDP/Candidate 体积，不中转、不录制该 P2P 音频流。
-- **三维空间混音**：客户端依据 20Hz 权威同步的世界坐标 `(x, y, z)` 与朝向 `yaw`，通过 Web Audio API 进行距离增益衰减与立体声声相计算。
-
----
-
-## 空间语音自动转写与 Agent 回复
-
-### 附近语音段（Nearby ASR）转写流程
-
-当真人开启麦克风录音时，系统支持将短语音转写并呈现在世界字幕中：
-
-1. **申请捕获片段**：`POST /chat/spatial/start` 获取片段 ID（限绑定发送者自身，45 秒过期，每人最多并发 4 个片段）。
-2. **提交音频切片**：`POST /chat/spatial/:id` 上传完整音频（不超过 1 MiB）。
-3. **Whisper 本地识别**：服务端通过本地 Whisper 模型转写文本。
-4. **声学交集广播**：在录音开始与转写完成时，两次计算收听者交集（要求空间增益 `gain >= 0.03`）。符合条件的玩家与 Agent 将收到 `scope: "nearby"` 的字幕事件。
-
-### Agent 空间语音回复合成
-
-托管在世界的 AI Agent 可启用自然语音发声能力：
-
-- **开关指令**：Agent 发送 `agent.voice: { enabled: boolean }` 或在控制台动态配置。
-- **合成与推流**：Agent 输出文本后，服务端在后台唤起本地 TTS 模型异步生成音频。
-- **定向声学下发**：音频生成后，系统计算空间收听者集合，向范围内的玩家下发 `agent.speech` 事件通知。
-- **音频拉取**：玩家凭 `chat.auth` 凭证发起 `GET /chat/agent-speech/:id` 获取 WAV 格式音频流。下载时会二次核验双方的实时距离与可听状态。
-
-::: tip 资源保护与熔断规则
-
-- **缓存配额**：音频文件最多保留 120 秒，全局上限 24 段或 32 MiB。
-- **排队保护**：合成排队上限 8 段，单个 Agent 最多积压 2 段；排队耗时超过 30 秒的任务将被自动丢弃。
-- **感知防环**：Agent 自身的朗读音频与字幕不会进入其自身的 `observe` 上下文，彻底杜绝自激死循环。
-  :::
-
----
 
 ## 托管 Agent 任务控制协议
 

@@ -7,44 +7,17 @@ import {
   type ModelResponder,
 } from '../../../tests/support/model-fixture';
 import { AICharacterManager } from '../src/modules/ai-characters';
-import { TtsService, ttsService } from '../src/modules/tts';
 import {
   bootstrapProviders,
   MemoryProviderRepository,
-  voicePersistence,
 } from './helpers/memory-storage';
 
 import { AgentRuntimeError, type Session } from '@voxel/agent-runtime';
-import { AppError } from '../src/core/errors/app-error';
-import { domainEvents } from '../src/core/events/domain-events';
 
 import type { WorldEvent } from '@voxel/shared';
 
-let mockTts: TtsService;
-
-vi.mock('../src/modules/tts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/modules/tts')>();
-  return {
-    ...actual,
-    ttsService: {
-      list: (...args: Parameters<TtsService['list']>) => mockTts.list(...args),
-      get: (...args: Parameters<TtsService['get']>) => mockTts.get(...args),
-      save: (...args: Parameters<TtsService['save']>) => mockTts.save(...args),
-      remove: (...args: Parameters<TtsService['remove']>) =>
-        mockTts.remove(...args),
-      synthesizer: (...args: Parameters<TtsService['synthesizer']>) =>
-        mockTts.synthesizer(...args),
-      synthesize: (...args: Parameters<TtsService['synthesize']>) =>
-        mockTts.synthesize(...args),
-      models: (...args: Parameters<TtsService['models']>) =>
-        mockTts.models(...args),
-    },
-  };
-});
-
 let store: MemoryProviderRepository, manager: AICharacterManager | undefined;
 beforeEach(async () => {
-  mockTts = new TtsService(voicePersistence());
   store = new MemoryProviderRepository();
   await bootstrapProviders(store);
   await store.save(
@@ -146,7 +119,6 @@ async function createWithTask(
   return m.list().find((agent) => agent.id === created.id)!;
 }
 const settings = {
-  voiceServiceId: 'local-default',
   providerId: 'deepseek',
   name: 'Reusable',
   maxTurns: 1,
@@ -188,87 +160,6 @@ it('saves task heartbeat independently without resetting or resuming progress', 
   });
   expect(decide).toHaveBeenCalledTimes(1);
 });
-it('protects a new voice binding while an Agent update is waiting for the world', async () => {
-  const next = await ttsService.save({ name: 'Next', type: 'piper' });
-  const session = fakeSession();
-  const m = setup(session);
-  const job = await createWithTask(m, { ...settings, voiceReplies: true });
-  await vi.waitFor(() => expect(m.list()[0].status).toBe('idle'));
-  let release!: () => void;
-  session.request.mockImplementationOnce(async () => {
-    await new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    return { ok: true };
-  });
-  const updating = m.update(job.id, {
-    voiceServiceId: next.id,
-    voiceReplies: false,
-  });
-  await expect(ttsService.remove(next.id)).rejects.toThrow();
-  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
-  release();
-  await updating;
-  expect(m.list()[0].voiceServiceId).toBe(next.id);
-  await expect(ttsService.remove(next.id)).rejects.toThrow();
-  await m.update(job.id, { voiceServiceId: '', voiceReplies: false });
-  await ttsService.remove(next.id);
-});
-it('restores a missing voice service as text-only without model calls', async () => {
-  const m = setup(fakeSession());
-  await createWithTask(m, { ...settings, voiceReplies: true });
-  await vi.waitFor(() => expect(m.list()[0].status).toBe('idle'));
-  await m.close();
-  await ttsService.remove('local-default');
-  const decide = vi.fn();
-  const restored = setup(fakeSession(), decide);
-  await restored.load();
-  expect(restored.list()[0].voiceReplies).toBe(false);
-  expect(restored.list()[0].voiceServiceId).toBe('');
-  expect(
-    restored
-      .list()[0]
-      .logEntries.map((entry) => entry.text)
-      .join('\n'),
-  ).toContain('原语音服务不可用');
-  expect(decide).not.toHaveBeenCalled();
-});
-
-it('does not erase voice settings when storage fails during restoration', async () => {
-  const originalManager = setup(fakeSession());
-  await createWithTask(originalManager, { ...settings, voiceReplies: true });
-  await originalManager.close();
-  const original = store.archive.json;
-  vi.spyOn(ttsService, 'get').mockRejectedValue(
-    new AppError('无法读取语音服务数据库配置。', 500),
-  );
-  const restored = setup(fakeSession());
-  await expect(restored.load()).rejects.toMatchObject({ status: 500 });
-  await restored.close();
-  expect(store.archive.json).toBe(original);
-});
-it('toggles voice during inference without restarting the agent or making another model call', async () => {
-  let release!: () => void;
-  const s = fakeSession();
-  const decide = vi.fn(async () => {
-    await new Promise<void>((resolve) => (release = resolve));
-    return [{ name: 'complete_task', arguments: { summary: '测试决策' } }];
-  });
-  const m = setup(s, decide),
-    job = await createWithTask(m, settings);
-  await vi.waitFor(() => expect(decide).toHaveBeenCalledTimes(1));
-  await expect(m.setVoice(job.id, { enabled: 'yes' })).rejects.toThrow();
-  expect((await m.setVoice(job.id, { enabled: true })).voiceReplies).toBe(true);
-  expect((await m.setVoice(job.id, { enabled: false })).voiceReplies).toBe(
-    false,
-  );
-  expect(s.request).toHaveBeenLastCalledWith('agent.voice', { enabled: false });
-  expect(s.join).toHaveBeenCalledTimes(1);
-  expect(s.close).not.toHaveBeenCalled();
-  expect(decide).toHaveBeenCalledTimes(1);
-  release();
-  await vi.waitFor(() => expect(m.list()[0].status).toBe('idle'));
-});
 it('updates saved settings without inference, protects identity, validates inputs and persists', async () => {
   const s = fakeSession(),
     decide = vi.fn(
@@ -293,7 +184,6 @@ it('updates saved settings without inference, protects identity, validates input
     intervalMaxMs: 8000,
     maxTokens: 1024,
     permissions: { move: true, chat: true, place: true, remove: true },
-    voiceReplies: true,
     id: 'forged',
     status: 'running',
   });
@@ -304,9 +194,7 @@ it('updates saved settings without inference, protects identity, validates input
     maxTurns: 50,
     maxTokens: 1024,
     permissions: { move: true, chat: true, place: true, remove: true },
-    voiceReplies: true,
   });
-  expect(s.request).toHaveBeenCalledWith('agent.voice', { enabled: true });
   expect(decide).toHaveBeenCalledTimes(1);
   expect(s.join).toHaveBeenCalledTimes(1);
   await m.close();
@@ -900,33 +788,22 @@ it.each(['completed', 'cancelled'] as const)(
   },
 );
 
-it('suppresses voice bindings and direct pause receipts while retaining the saved voice preference', async () => {
-  const bound: Array<{ sessionId: string; serviceId: string }> = [];
-  const off = domainEvents.on('agent.voice.bound', (payload) =>
-    bound.push(payload),
-  );
+it('suppresses direct pause receipts while chat permission is off', async () => {
   const s = fakeSession();
   const decide = vi.fn<ModelResponder>(async () => [
     { name: 'request_input', arguments: { question: '等待确认' } },
   ]);
   const m = setup(s, decide);
-  try {
+  {
     const job = await createWithTask(m, {
       ...settings,
       maxTurns: 30,
-      voiceReplies: true,
     });
     await vi.waitFor(() => expect(m.list()[0].status).toBe('idle'));
     await m.update(job.id, {
       skills: ['guide'],
       permissions: { move: true, chat: false, place: false, remove: false },
     });
-    expect(m.list()[0].voiceReplies).toBe(true);
-    expect(s.request).toHaveBeenCalledWith('agent.voice', { enabled: false });
-    expect(bound.at(-1)).toEqual({ sessionId: 'player-1', serviceId: '' });
-    await expect(m.setVoice(job.id, { enabled: true })).rejects.toThrow(
-      '聊天权限',
-    );
     s.request.mockClear();
     s.onEvent!({
       seq: 5,
@@ -946,16 +823,6 @@ it('suppresses voice bindings and direct pause receipts while retaining the save
     expect(s.request.mock.calls.filter(([type]) => type === 'chat')).toEqual(
       [],
     );
-    await m.update(job.id, {
-      permissions: { move: true, chat: true, place: false, remove: false },
-    });
-    expect(s.request).toHaveBeenCalledWith('agent.voice', { enabled: true });
-    expect(bound.at(-1)).toEqual({
-      sessionId: 'player-1',
-      serviceId: 'local-default',
-    });
-  } finally {
-    off();
   }
 });
 

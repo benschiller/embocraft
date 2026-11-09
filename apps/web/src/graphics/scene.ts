@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { Connection } from '../network/connection';
 import { isInteractiveTarget } from './controls/input-target';
 import { VoxelAvatar } from './entities/avatar';
-import { projectSpeechAnchor } from './speech-anchor';
 export type TargetBlock = Pick<Block, 'material' | 'x' | 'y' | 'z'>;
 const colors = {
   grass: 0x6b9c52,
@@ -260,17 +259,6 @@ export class WorldScene {
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.frame);
   };
-  speechAnchor(actor: string) {
-    const avatar = this.avatars.get(actor);
-    if (!avatar?.visible || this.connection.status !== 'connected') return null;
-    return projectSpeechAnchor(
-      this.camera,
-      avatar.position,
-      this.host.clientWidth,
-      this.host.clientHeight,
-      this.meshes,
-    );
-  }
   leaveWorld() {
     this.keys.clear();
     if (document.pointerLockElement === this.renderer.domElement)

@@ -19,13 +19,9 @@ const options: swaggerJsdoc.Options = {
       { name: 'System', description: '服务状态' },
       { name: 'ConsoleSync', description: '控制台同步与命令执行状态' },
       { name: 'World', description: '世界与在线状态' },
-      { name: 'AI Characters', description: 'AI 角色配置、上下线与语音设置' },
+      { name: 'AI Characters', description: 'AI 角色配置与上下线' },
       { name: 'Providers', description: '共享 LLM 提供商配置与模型目录' },
       { name: 'Tasks', description: '任务计划、指派、调度与执行控制' },
-      { name: 'TTS', description: '共享语音合成服务配置、试听与模型管理' },
-      { name: 'ASR', description: '语音识别服务配置' },
-      { name: 'Voice', description: '语音能力查询和音频转录' },
-      { name: 'Chat', description: '聊天音频、空间语音与听众访问权限' },
     ],
     components: {
       securitySchemes: {
@@ -33,7 +29,7 @@ const options: swaggerJsdoc.Options = {
           type: 'http',
           scheme: 'bearer',
           description:
-            '管理员令牌；用于管理命令查询，以及 AI Characters、Providers、Tasks、TTS 和 ASR 配置管理。',
+            '管理员令牌；用于管理命令查询，以及 AI Characters、Providers 和 Tasks 配置管理。',
         },
         ChatBearer: {
           type: 'http',

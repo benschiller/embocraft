@@ -1,6 +1,5 @@
 import { useI18n } from '../../../i18n/context';
 import type { ChatController } from '../hooks/useChatController';
-import { AudioMessage } from './AudioMessage';
 
 type Props = Pick<
   ChatController,
@@ -45,11 +44,7 @@ export function ChatMessages({ connection, list }: Props) {
               ))}
             </div>
           )}
-          {e.data.kind === 'audio' ? (
-            <AudioMessage entry={e} connection={connection} />
-          ) : (
-            <p>{e.data.text}</p>
-          )}
+          <p>{e.data.text}</p>
         </article>
       ))}
     </div>

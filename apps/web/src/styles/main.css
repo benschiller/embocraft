@@ -5,14 +5,12 @@
 @import '../features/chat/styles/composer.css';
 @import '../features/hud/styles/controls.css';
 @import '../components/layout/responsive.css';
-@import '../features/voice/voice.css';
 @import '../features/hud/styles/navigation.css';
 @import '../features/world/presence.css';
 @import '../features/hud/styles/panels.css';
 @import '../features/world/join-actions.css';
 @import '../features/console/console.css';
 @import '../features/world/lobby.css';
-@import '../features/console/voice/voice-layout.css';
 @import '../features/world/lobby-responsive.css';
 @import '../features/chat/styles/chat.css';
 @import '../features/console/workspace.css';

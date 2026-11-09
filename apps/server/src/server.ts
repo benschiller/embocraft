@@ -30,14 +30,11 @@ import {
   CharacterQueries,
   createAICharacterRouter,
 } from './modules/ai-characters';
-import { asrService, createAsrRouter, installAsrSocket } from './modules/asr';
-import { createTtsRouter, ttsService } from './modules/tts';
 import { GatewayAuth, installGatewaySocket } from './modules/gateway';
 import { createProviderRouter, providerRepository } from './modules/providers';
 import { consoleSync, createConsoleSyncRouter } from './modules/console-sync';
 import { createTaskRouter } from './modules/tasks';
 import { WorldRoom, createWorldRouter, getActiveWorld } from './modules/world';
-import { createChatRouter } from './modules/chat';
 
 /**
  * 创建并装配服务器实例。
@@ -75,36 +72,14 @@ export async function createServer() {
     ),
   );
 
-  // 2. 语音与音频路由
-  app.use(
-    ['/voice/asr/services', '/voice/asr/defaults', '/voice/asr/models'],
-    gatewayAuth.middleware,
-  );
-  app.use('/voice/asr/assignments', (req, res, next) => {
-    if (req.method === 'GET') next();
-    else gatewayAuth.middleware(req, res, next);
-  });
-  app.use(createAsrRouter());
-  app.use(
-    createManagementRouter(
-      '/voice/tts',
-      gatewayAuth.middleware,
-      (management) => {
-        management.use(createTtsRouter());
-      },
-    ),
-  );
-
-  // 3. 游戏世界房间与聊天路由
+  // 2. 游戏世界房间路由
   app.use(createWorldRouter());
-  app.use(createChatRouter());
 
   app.use(errorHandler());
   const http = createHttpServer(app);
   // Sockets register module-by-module like HTTP routes; other upgrades reach Colyseus.
   const sockets: SocketRoutes = new Map();
   installGatewaySocket(sockets, gatewayAuth);
-  installAsrSocket(sockets);
   const transport = new RoutedWebSocketTransport(http, sockets);
   const server = new Server({
     transport,
@@ -120,7 +95,7 @@ export async function createServer() {
       try {
         await server.gracefullyShutdown(false);
       } finally {
-        // Colyseus closes its players; explicitly close ASR upgrades and HTTP/SSE too.
+        // Colyseus closes its players; explicitly close gateway upgrades and HTTP/SSE too.
         transport.closeConnections();
         if (http.listening) {
           http.close();
@@ -168,8 +143,6 @@ export async function createServer() {
       server,
       characters,
       providers: providerRepository,
-      voiceServices: ttsService,
-      asrSettings: asrService,
       get world() {
         return getActiveWorld()!;
       },

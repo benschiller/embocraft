@@ -14,7 +14,6 @@ import {
 } from './features/hud';
 import { useI18n } from './i18n';
 
-import { SpatialVoicePanel, useAsrSelectionSync } from './features/voice';
 import {
   LobbyCard,
   useWorldScene,
@@ -29,7 +28,6 @@ import type { Connection } from './network/connection';
 const ControlConsole = lazy(loadControlConsole);
 
 export function App({ connection }: { connection: Connection }) {
-  useAsrSelectionSync();
   const { t } = useI18n();
   const [consoleEntry, setConsoleEntry] = useState<{
     initialTab?: 'characters';
@@ -55,7 +53,6 @@ export function App({ connection }: { connection: Connection }) {
     setMaterial,
     editBlock,
     leaveWorldScene,
-    speechAnchor,
   } = useWorldScene(connection);
   const session = useWorldSession(connection, leaveWorldScene);
   const { name, setName, joined } = session;
@@ -150,7 +147,6 @@ export function App({ connection }: { connection: Connection }) {
           }
         >
           <ControlConsole
-            connection={connection}
             open={consoleEntry !== null}
             initialTab={consoleEntry?.initialTab}
             onClose={() => setConsoleEntry(null)}
@@ -162,10 +158,6 @@ export function App({ connection }: { connection: Connection }) {
         <div
           className={`game-communication${chatExpanded ? ' has-expanded' : ''}`}
         >
-          <SpatialVoicePanel
-            speechAnchor={speechAnchor}
-            connection={connection}
-          />
           <ChatPanel
             connection={connection}
             expanded={chatExpanded}

@@ -1,38 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import {
-  ArrowUp,
-  LoaderCircle,
-  AtSign,
-  Mic,
-  Plus,
-  Square,
-  AudioLines,
-  X,
-} from 'lucide-react';
+import { ArrowUp, LoaderCircle, AtSign, Plus, X } from 'lucide-react';
 import { useI18n } from '../../../i18n';
 import { mentionQuery } from '../chat-mentions';
 import type { ChatController } from '../hooks/useChatController';
-import { VoiceDraft } from './VoiceDraft';
 import { MentionPicker } from './MentionPicker';
 import { ComposerNotice } from './ComposerNotice';
-
-function RecordingClock() {
-  const [seconds, setSeconds] = useState(0);
-  useEffect(() => {
-    const started = Date.now();
-    const timer = setInterval(
-      () => setSeconds(Math.floor((Date.now() - started) / 1000)),
-      1000,
-    );
-    return () => clearInterval(timer);
-  }, []);
-  return (
-    <span className="chat-recording-clock" aria-hidden="true">
-      {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-    </span>
-  );
-}
 
 export function ChatComposer({
   controller: c,
@@ -41,7 +14,6 @@ export function ChatComposer({
 }) {
   const { t } = useI18n();
   const [more, setMore] = useState(false);
-  const [playbackError, setPlaybackError] = useState('');
   const { setPicker } = c;
   const openNotice = useCallback(() => {
     setMore(false);
@@ -51,45 +23,16 @@ export function ChatComposer({
   const trigger = useRef<HTMLButtonElement>(null);
   const actionsId = useId();
   const composer = useRef<HTMLFormElement>(null);
-  const wasOccupied = useRef(c.busy || !!c.clip);
+  const wasOccupied = useRef(c.busy);
   useEffect(() => {
-    const occupied = c.busy || !!c.clip;
+    const occupied = c.busy;
     if (wasOccupied.current && !occupied && !c.collapsed)
       c.input.current?.focus();
     wasOccupied.current = occupied;
-  }, [c.busy, c.clip, c.collapsed, c.input]);
-  const canFinishDictationAndSend =
-    (c.mode === 'dictating' || c.mode === 'transcribing') &&
-    !c.dictationSending;
-  const canFinishRecordingAndSend = c.mode === 'recording';
-  const canFinishAndSend =
-    canFinishDictationAndSend || canFinishRecordingAndSend;
-  const sendLabel = canFinishRecordingAndSend
-    ? t('chat.finishRecordingAndSend')
-    : canFinishDictationAndSend
-      ? t('chat.finishDictationAndSend')
-      : c.clip || c.mode === 'finalizing'
-        ? t('chat.sendAudio')
-        : t('chat.send');
-  const recording = c.mode === 'dictating' || c.mode === 'recording';
-  const showMore = more && !c.busy && !c.clip && !c.picker && !c.collapsed;
-  const cancelLabel =
-    c.mode === 'sending' ? t('chat.cancelSending') : t('common.cancel');
-  const stateLabel = c.dictationSending
-    ? t('chat.confirmingAndSending')
-    : c.mode === 'permission'
-      ? t('chat.requestingMic')
-      : c.mode === 'dictating'
-        ? t('chat.dictating')
-        : c.mode === 'finalizing'
-          ? t('chat.finishingRecording')
-          : c.mode === 'recording'
-            ? t('chat.recording')
-            : c.mode === 'transcribing'
-              ? t('chat.recognizing')
-              : c.clip
-                ? t('chat.sendingAudio')
-                : t('chat.sending');
+  }, [c.busy, c.collapsed, c.input]);
+  const sendLabel = t('chat.send');
+  const showMore = more && !c.busy && !c.picker && !c.collapsed;
+  const cancelLabel = t('chat.cancelSending');
   const closeForAction = () => {
     actionSelected.current = true;
     setMore(false);
@@ -139,17 +82,6 @@ export function ChatComposer({
               <AtSign size={16} aria-hidden="true" />
               {t('chat.pickMention')}
             </button>
-            <button
-              type="button"
-              disabled={!c.connected}
-              onClick={() => {
-                closeForAction();
-                c.record('audio');
-              }}
-            >
-              <AudioLines size={16} aria-hidden="true" />
-              {t('chat.recordVoice')}
-            </button>
           </Popover.Content>
         </Popover.Portal>
         <form
@@ -158,37 +90,16 @@ export function ChatComposer({
           onSubmit={(event) => {
             event.preventDefault();
             if (!c.connected) return;
-            if (canFinishRecordingAndSend) c.finishRecording(true);
-            else if (canFinishDictationAndSend) c.finishDictation(true);
-            else if (!c.busy) void c.send();
+            if (!c.busy) void c.send();
           }}
         >
           {c.busy ? (
             <button
               type="button"
               className="chat-composer-icon"
-              disabled={c.mode === 'sending' && !c.clip}
               aria-label={cancelLabel}
               title={cancelLabel}
-              onClick={() => {
-                if (c.mode === 'sending') c.upload.current?.abort();
-                else c.cancel();
-              }}
-            >
-              <X size={18} aria-hidden="true" />
-            </button>
-          ) : c.clip ? (
-            <button
-              type="button"
-              className="chat-composer-icon"
-              aria-label={t('chat.discardRecording')}
-              title={t('chat.discardRecording')}
-              onClick={() => {
-                setMore(false);
-                c.setClip(undefined);
-                c.setStatus('');
-                c.setError('');
-              }}
+              onClick={() => c.upload.current?.abort()}
             >
               <X size={18} aria-hidden="true" />
             </button>
@@ -209,28 +120,15 @@ export function ChatComposer({
           )}
           {c.busy ? (
             <div className="chat-recording">
-              {recording ? (
-                <span className="chat-recording-dot" aria-hidden="true" />
-              ) : (
-                <LoaderCircle
-                  className="chat-progress-spinner"
-                  size={15}
-                  aria-hidden="true"
-                />
-              )}
+              <LoaderCircle
+                className="chat-progress-spinner"
+                size={15}
+                aria-hidden="true"
+              />
               <span className="chat-recording-label" role="status">
-                {c.dictationSending ? stateLabel : c.partial || stateLabel}
+                {t('chat.sending')}
               </span>
-              {(recording || c.mode === 'transcribing') && <RecordingClock />}
             </div>
-          ) : c.clip && c.preview ? (
-            <VoiceDraft
-              key={c.preview}
-              src={c.preview}
-              durationMs={c.clipDuration}
-              busy={c.busy}
-              onErrorChange={setPlaybackError}
-            />
           ) : (
             <input
               ref={c.input}
@@ -272,53 +170,14 @@ export function ChatComposer({
               }}
             />
           )}
-          {recording ? (
-            <button
-              type="button"
-              className="chat-composer-icon"
-              aria-label={t('chat.endRecording')}
-              title={t('chat.endRecording')}
-              onClick={() => {
-                if (c.mode === 'dictating') {
-                  c.finishDictation();
-                } else c.finishRecording();
-              }}
-            >
-              <Square size={15} fill="currentColor" aria-hidden="true" />
-            </button>
-          ) : (
-            !c.busy &&
-            !c.clip && (
-              <button
-                type="button"
-                className="chat-composer-icon"
-                disabled={!c.connected}
-                aria-label={t('chat.voiceToText')}
-                title={t('chat.voiceToText')}
-                onClick={() => {
-                  setMore(false);
-                  c.record('text');
-                }}
-              >
-                <Mic size={19} aria-hidden="true" />
-              </button>
-            )
-          )}
-          {!c.busy && (c.error || playbackError || c.overflow) && (
+          {!c.busy && c.error && (
             <ComposerNotice
-              error={c.error || playbackError}
-              overflow={c.overflow}
-              canRestore={!c.text.trim() && !c.clip}
+              error={c.error}
+              overflow=""
+              canRestore={false}
               anchor={composer}
               onOpen={openNotice}
-              onRestore={() => {
-                // Keep any remainder instead of losing a sentence over the input limit.
-                c.setText(c.overflow.slice(0, 240));
-                c.setOverflow(c.overflow.slice(240));
-                c.setError('');
-                c.setStatus('');
-                c.input.current?.focus();
-              }}
+              onRestore={() => {}}
             />
           )}
           <button
@@ -326,8 +185,8 @@ export function ChatComposer({
             className="chat-send"
             disabled={
               !c.connected ||
-              (c.busy && !canFinishAndSend) ||
-              (!canFinishAndSend && !c.clip && !c.text.trim()) ||
+              c.busy ||
+              !c.text.trim() ||
               (c.scope === 'private' && !c.recipients.length)
             }
             aria-label={sendLabel}

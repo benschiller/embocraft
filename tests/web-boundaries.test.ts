@@ -107,19 +107,6 @@ it('has no Web dependency cycles, including type imports and public re-exports',
   for (const file of graph.keys()) visit(file, []);
 });
 
-it('keeps the PCM worklet URL pointed at a shipped JavaScript asset', () => {
-  for (const file of ['audio/recording/live-recorder.ts']) {
-    const source = readFileSync(resolve(root, file), 'utf8');
-    const reference = source.match(
-      /new URL\('([^']+pcm-worklet\.js)', import\.meta\.url\)/,
-    )?.[1];
-    expect(reference, file).toBeDefined();
-    expect(existsSync(resolve(root, dirname(file), reference!)), file).toBe(
-      true,
-    );
-  }
-});
-
 it('loads HUD overrides after shared surfaces in the original cascade order', () => {
   const imports = ts
     .preProcessFile(readFileSync(resolve(root, 'main.tsx'), 'utf8'), true, true)

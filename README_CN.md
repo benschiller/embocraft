@@ -12,7 +12,6 @@
 ## 核心特性
 
 - 🤖 **大模型 AI 玩家**：支持 DeepSeek 等大语言模型，具备自主观察、空间移动、多轮推理规划与方块编辑能力。
-- 🎙️ **附近空间语音与实时转写**：内置 Whisper ASR 语音识别与 Piper 离线 TTS 语音合成，支持基于 3D 距离与朝向的衰减混音，并在断句后向附近玩家与 Agent 自动广播转写字幕。
 - 🧱 **权威多人世界**：Three.js 实例化体素渲染，由 Node.js / Colyseus 服务端权威执行物理移动、速度、射线碰撞、重力及方块相邻支撑校验。
 - 🔌 **Agent Gateway 管理中枢**：提供独立的 HTTP/WebSocket 协议端点，统一管理 AI 角色生命周期、任务计划队列、状态回执与 Token 预算保护。
 
@@ -55,7 +54,7 @@ pnpm agent:ai --api-key sk-your-deepseek-api-key
 
 ### 2. Docker 一键全栈部署
 
-本项目提供开箱即用的 Docker Compose 编排，包含 Web 前端、Node 后端、PostgreSQL 数据库以及内置的 Speaches 语音容器（Whisper ASR + Piper TTS）：
+本项目提供开箱即用的 Docker Compose 编排，包含 Web 前端、Node 后端与 PostgreSQL 数据库：
 
 ```sh
 # 一键启动所有服务
@@ -84,7 +83,6 @@ pnpm docker:down
 | **跳跃**     | `Space`                                 | 垂直起跳（支持攀爬一格台阶）             |
 | **方块编辑** | 准星对准 6 格内方块，左键破坏，右键放置 | 支持底部 UI 快捷放置/移除与材质选择      |
 | **文字聊天** | 界面左下角聊天框                        | 支持群聊广播与 `@玩家昵称` 私聊          |
-| **附近语音** | 语音控制面板                            | 支持麦克风发言、空间音效收听与语音转文字 |
 
 ---
 
@@ -115,11 +113,10 @@ embocraft/
 | **入门指南** | [快速开始](docs/guide/getting-started.md)     | 环境搭建、本地开发、Docker 部署与常见排错    |
 | **系统架构** | [架构与代码组织](docs/guide/architecture.md)  | 前后端模块拆分、生命周期、限制与设计边界     |
 | **协议规范** | [协议与扩展边界](docs/protocol/overview.md)   | 权威世界状态同步、输入校验与扩展约束         |
-|              | [聊天与附近语音](docs/protocol/chat.md)       | 空间音频 WebRTC 信令、麦克风转写与广播流程   |
+|              | [文字聊天](docs/protocol/chat.md)             | 世界房间内的公开与私聊文字消息               |
 | **AI Agent** | [接入 AI 玩家](docs/agent/players.md)         | DeepSeek 模型接入、推理工具链与任务执行循环  |
 |              | [Agent Gateway](docs/agent/gateway.md)        | 管理令牌、HTTP 控制端点与 WebSocket 状态订阅 |
 |              | [统一事件运行时](docs/agent/runtime.md)       | 任务执行器、检查点持久化与预算配额保护       |
-| **语音服务** | [语音服务管理](docs/voice/setup.md)           | Whisper ASR 与 Piper TTS 模型安装与配置      |
 | **变更记录** | [验证记录](docs/changelog/validation.md)      | 浏览器双端回归、网络异常恢复与功能验收记录   |
 |              | [Pi 架构迁移](docs/changelog/pi-migration.md) | Agent 运行时架构演进记录                     |
 

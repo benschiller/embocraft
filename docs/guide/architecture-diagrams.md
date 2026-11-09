@@ -6,7 +6,7 @@
 
 ## 1. 系统全景与部署拓扑
 
-对应 `docker-compose.yml`：`web`（Nginx 托管静态资源并反代）、`server`（Node 单进程）、`speech`（Whisper/Piper 语音服务）、`db`（PostgreSQL 17）。
+对应 `docker-compose.yml`：`web`（Nginx 托管静态资源并反代）、`server`（Node 单进程）、`db`（PostgreSQL 17）。
 
 ```mermaid
 graph LR
@@ -18,7 +18,6 @@ graph LR
     subgraph Docker["docker compose"]
         Web["web 容器<br/>Nginx :80<br/>apps/web 构建产物"]
         Server["server 容器 :2567<br/>Express + Colyseus 0.16<br/>+ AI 角色运行时"]
-        Speech["speech 容器 :8000<br/>Whisper ASR / Piper TTS<br/>OpenAI 兼容 /v1"]
         DB[("db 容器<br/>PostgreSQL 17")]
         Vol[("server_data 卷<br/>/app/.data")]
     end
@@ -26,7 +25,6 @@ graph LR
     subgraph External["外部模型服务"]
         DeepSeek["DeepSeek / OpenAI 兼容 API"]
         Ollama["Ollama（本地/局域网）"]
-        Bailian["阿里云百炼<br/>实时语音 / ASR"]
     end
 
     Browser -->|HTTP / WS| Web
@@ -34,11 +32,8 @@ graph LR
     CLI -->|WS Gateway + HTTP| Server
     Server -->|Prisma + pg| DB
     Server -->|模型文件| Vol
-    Server -->|ASR / TTS| Speech
     Server -->|LLM 推理| DeepSeek
     Server -->|LLM 推理| Ollama
-    Server -->|实时会话| Bailian
-    Browser -.->|浏览器 ASR / TTS / WebRTC| Browser
 ```
 
 ---
@@ -74,7 +69,6 @@ graph LR
     Shared --> Agent["agent<br/>capabilities · characters"]
     Shared --> Task["task<br/>contracts · plans · timing"]
     Shared --> Comm["communication<br/>chat"]
-    Shared --> Audio["audio<br/>asr · spatial · voice-services"]
     Shared --> Mgmt["management<br/>client · contracts"]
 ```
 
@@ -99,7 +93,6 @@ graph TD
     Create --> App["Express 中间件与路由"]
     Create --> Sockets["SocketRoutes Map"]
     Sockets --> GWS["installGatewaySocket<br/>/ai-characters/gateway"]
-    Sockets --> ASRS["installAsrSocket<br/>/voice/asr/realtime"]
 
     Create --> Transport["RoutedWebSocketTransport<br/>按路径分发 WS 升级"]
     Transport --> Colyseus["Colyseus Server"]
@@ -129,7 +122,6 @@ graph TB
         GW["gateway<br/>auth.service · gateway.socket · validation"]
         Prov["providers<br/>domain · services · adapters<br/>persistence · routes · ports"]
         Chat["chat<br/>domain · services · routes"]
-        Audio["audio<br/>domain · services · persistence · routes · sockets"]
     end
     Server --> App
     Server --> Core
@@ -143,17 +135,14 @@ graph TB
     App --> Tasks
     App --> Prov
     App --> Chat
-    App --> Audio
     App --> World
     GW --> Mgmt
     AIC --> Mgmt
     AIC --> Tasks
     AIC --> Prov
-    AIC --> Audio
     AIC --> Persist
     Tasks -->|仅 HTTP 层| Mgmt
     World --> Chat
-    World --> Audio
     Modules --> Core
     Persist -->|持久化门面| Tasks
     Persist -->|持久化门面| AIC
@@ -169,7 +158,6 @@ graph LR
     Orch --> Exec["services/character-execution.service.ts<br/>执行、唤醒与停止"]
     Manage --> Exec
     Exec --> Host["services/character-host.service.ts<br/>单角色世界会话"]
-    Orch --> Voice["services/voice-coordinator.service.ts"]
     Orch --> Restore["services/character-restore · character-snapshots"]
     Orch --> Joint["application/management-persistence.ts<br/>联合提交协调"]
     Routes --> Queries["persistence/queries.ts<br/>注入的角色查询"]
@@ -195,18 +183,16 @@ graph LR
         WebC["Web 前端<br/>network/connection.ts"]
         WebG["Web 控制台<br/>network/gateway.ts"]
         WebP["Web 大厅<br/>network/world-presence.ts"]
-        WebA["Web 语音<br/>audio/services"]
         AgentC["AI 角色 Session<br/>（进程内，colyseus.js）"]
         CLIc["CLI agent:ctl"]
     end
 
     subgraph Port["HTTP Server :2567"]
         direction TB
-        REST["Express REST<br/>/ai-characters · /tasks · /task-runs · /providers<br/>/management · /world · /chat · /voice/*<br/>/health · /api-docs"]
+        REST["Express REST<br/>/ai-characters · /tasks · /task-runs · /providers<br/>/management · /world<br/>/health · /api-docs"]
         SSE["SSE<br/>/world/presence"]
         Upg{"WS Upgrade<br/>RoutedWebSocketTransport"}
         GWWS["/ai-characters/gateway<br/>管理状态通知（命令使用 HTTP）"]
-        ASRWS["/voice/asr/realtime<br/>流式识别"]
         COL["Colyseus 房间 'world'<br/>sync · action · state patch"]
     end
 
@@ -217,11 +203,8 @@ graph LR
     CLIc --> REST
     WebG --> REST
     WebP --> SSE
-    WebA --> ASRWS
-    WebA --> REST
 
     Upg --> GWWS
-    Upg --> ASRWS
     Upg -->|其余路径| COL
 ```
 
@@ -233,8 +216,6 @@ graph TD
     Allow --> Move["move → 物理输入"]
     Allow --> Edit["edit → 方块 CAS 写入 → WorldStore"]
     Allow --> Rename["rename"]
-    Allow --> AV["agent.voice → 角色语音开关"]
-    Allow --> Spatial["spatial.signal → WebRTC 信令"]
     Allow --> ChatM["chat → Chat 模块"]
     Sync["onMessage('sync')"] --> Snap["snapshot() 全量快照"]
 ```
@@ -251,14 +232,12 @@ graph TB
     subgraph Features["features/（业务特性）"]
         FWorld["world<br/>LobbyCard · WorldPanel<br/>useWorldSession · useWorldScene"]
         FHud["hud<br/>GameHeader · GameMenu · GameFooter<br/>useHudController · useGameShortcuts"]
-        FChat["chat<br/>ChatPanel · MentionPicker · VoiceDraft<br/>useChatController"]
-        FVoice["voice<br/>SpatialVoicePanel · SpeechCaption<br/>SpeechRecognitionPanel"]
-        FConsole["console<br/>ControlConsole · GatewayAccess<br/>ai-characters · tasks · providers · voice · execution"]
+        FChat["chat<br/>ChatPanel · MentionPicker<br/>useChatController"]
+        FConsole["console<br/>ControlConsole · GatewayAccess<br/>ai-characters · tasks · providers · execution"]
     end
 
     subgraph Infra["基础层"]
         Graphics["graphics<br/>scene · entities/avatar · controls/pointer-lock"]
-        AudioL["audio<br/>core · recording · services · spatial"]
         Net["network<br/>connection · gateway · endpoints · world-presence"]
         UI["components/ui<br/>Button · Dialog · LanguageSwitcher"]
         I18n["i18n<br/>config · context · locales"]
@@ -269,8 +248,6 @@ graph TB
     FWorld --> Net
     FHud --> Graphics
     FChat --> Net
-    FChat --> AudioL
-    FVoice --> AudioL
     FConsole --> Net
     Features --> UI
     Features --> I18n
@@ -457,8 +434,6 @@ graph LR
         Prov["模型供应商配置"]
         Chars["AI 角色快照 · 活动日志"]
         TaskF["任务计划 · 执行快照"]
-        VoiceF["TTS 服务配置"]
-        ASRF["ASR 服务配置"]
     end
 
     subgraph Env["环境变量"]
@@ -466,7 +441,6 @@ graph LR
     end
 
     subgraph Memory["内存（不持久化）"]
-        Rec["聊天录音 / Agent 合成音频缓存"]
         Players["玩家位置 / 物理体"]
         EvBuf["事件环形缓存"]
     end
@@ -474,14 +448,11 @@ graph LR
     WorldStoreN["WorldStore"] --> WorldT
     WorldStoreN --> EditT
     DatabaseProviderRepoN["DatabaseProviderRepository"] --> Prov
-    VSN["TtsService"] --> VDB["DatabaseVoiceServicePersistence"] --> VoiceF
-    ASN["AsrService"] --> ADB["DatabaseAsrServicePersistence"] --> ASRF
     Token -->|env.readServer| GAN["GatewayAuth"]
     MP["management-persistence / archive"] --> Chars
     MP --> TaskF
-    ChatN["chat / agent-speech"] --> Rec
     RoomN["WorldRoom"] --> Players
     RoomN --> EvBuf
 ```
 
-> 服务需要 PostgreSQL。模型供应商、Agent 与 TTS/ASR 服务配置保存在数据库。网关令牌来自环境变量，本地语音模型文件保存在 `server_data` 卷（容器内 `/app/.data`）。旧语音配置文件不会自动导入。
+> 服务需要 PostgreSQL。模型供应商、Agent、任务与聊天文字记录保存在数据库。网关令牌来自环境变量。语音服务表仍保留在数据库结构中但不再使用。

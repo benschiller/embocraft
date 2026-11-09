@@ -27,8 +27,6 @@ export type AICharacterSettings = {
   maxTokens: number;
   permissions: AICharacterPermissions;
   skills?: AICharacterSkillId[];
-  voiceReplies?: boolean;
-  voiceServiceId?: string;
   thinking: 'enabled' | 'disabled';
   reasoningEffort: 'none' | 'low' | 'high' | 'max';
 };
@@ -51,7 +49,6 @@ export type AICharacterUsage = {
   estimated: boolean;
 };
 export type AICharacterView = AICharacterSettings & {
-  voiceServiceName?: string;
   id: string;
   providerName: string;
   status:

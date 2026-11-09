@@ -122,17 +122,23 @@ try {
     ).status,
     401,
   );
+  assert.equal((await fetch(server.httpUrl + '/providers')).status, 401);
   assert.equal(
-    (await fetch(server.httpUrl + '/voice/asr/services')).status,
-    401,
+    (
+      await fetch(server.httpUrl + '/providers', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).status,
+    200,
   );
+  // Voice management routes were removed with the voice stack.
   assert.equal(
     (
       await fetch(server.httpUrl + '/voice/asr/services', {
         headers: { Authorization: `Bearer ${token}` },
       })
     ).status,
-    200,
+    404,
   );
   const bad = connect('wrong');
   await assert.rejects(bad.connect());

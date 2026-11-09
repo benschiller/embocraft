@@ -166,14 +166,10 @@ it('includes agent and task endpoints from domain routes.ts files', () => {
   }
 });
 
-it('documents the spatial text, command receipt, and OpenAPI JSON endpoints', () => {
-  const spatial = spec.paths['/chat/spatial/{id}/text']?.post;
-  expect(spatial).toBeDefined();
+it('documents the command receipt and OpenAPI JSON endpoints', () => {
   expect(
-    spatial.requestBody.content['application/json'].schema.properties.text,
-  ).toMatchObject({ type: 'string', maxLength: 240 });
-  expect(spatial.responses?.['200']).toBeDefined();
-
+    Object.keys(spec.paths).filter((path) => /^\/(voice|chat)\//.test(path)),
+  ).toEqual([]);
   const receipt = spec.paths['/console-sync/commands/{id}']?.get;
   expect(receipt).toBeDefined();
   expect(receipt.responses?.['200']).toBeDefined();
@@ -191,11 +187,6 @@ it('documents resource ownership, management and chat credentials, with no globa
     ['/providers', 'Providers'],
     ['/tasks', 'Tasks'],
     ['/task-runs', 'Tasks'],
-    ['/voice/tts', 'TTS'],
-    ['/voice/asr/services', 'ASR'],
-    ['/voice/asr/defaults', 'ASR'],
-    ['/voice/asr/models', 'ASR'],
-    ['/voice/asr/assignments/{use}', 'ASR'],
   ];
   for (const { path, operation } of operations) {
     const domain = management.find(

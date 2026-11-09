@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { aiCharacterPermissions, type AICharacterView } from '@voxel/shared';
 import { AppError } from '../../../core/errors/app-error';
-import { boolean, object, text } from '../../../core/http/validation';
+import { boolean, text } from '../../../core/http/validation';
 import type { ProviderRuntimePort } from '../../providers';
 import {
   markJoined,
@@ -15,7 +15,6 @@ import {
   validateAICharacter,
 } from '../domain/character-settings';
 import { executionState } from '../integrations/task-execution-adapter';
-import type { CharacterVoiceCoordinator } from '../integrations/voice-coordinator';
 import type { CharacterExecutionService } from '../runtime/character-execution';
 import {
   active,
@@ -29,7 +28,6 @@ import type { AICharacterWakeScheduler } from '../runtime/wake-scheduler';
 type ManagementContext = {
   jobs: AICharacterRegistry;
   providers: ProviderRuntimePort;
-  voice: CharacterVoiceCoordinator;
   scheduler: AICharacterWakeScheduler;
   execution: CharacterExecutionService;
   closing: () => boolean;
@@ -53,7 +51,6 @@ export class CharacterManagementService {
     );
     const settings = validateAICharacter(input, provider);
     const joinWorld = boolean(input.joinWorld, true);
-    await this.context.voice.checkVoice(settings);
     if (this.context.closing()) throw new AppError('世界服务正在关闭。', 503);
     if (
       joinWorld &&
@@ -114,8 +111,7 @@ export class CharacterManagementService {
       )
         throw new AppError('角色状态已变化，请刷新后重试。', 409);
       const settings = validateAICharacter(job.view, provider);
-      await this.context.voice.checkVoice(settings);
-      if (
+        if (
         this.context.closing() ||
         this.context.jobs.get(id) !== job ||
         job.abort.signal.aborted ||
@@ -174,32 +170,18 @@ export class CharacterManagementService {
         },
         provider,
       );
-      await this.context.voice.checkVoice(settings);
-      if (
+        if (
         this.context.closing() ||
         this.context.jobs.get(id) !== job ||
         active(job.view.status)
       )
         throw new AppError('角色状态已变化，请刷新后重试。', 409);
       const session = job.session;
-      if (
-        session &&
-        (!!settings.voiceReplies && aiCharacterPermissions(settings).chat) !==
-          (!!job.view.voiceReplies && aiCharacterPermissions(job.view).chat)
-      ) {
-        const result = await this.context.voice.syncSessionVoice(
-          session,
-          !!settings.voiceReplies && aiCharacterPermissions(settings).chat,
-        );
-        if (!result.ok || job.session !== session || active(job.view.status))
-          throw new AppError('语音开关未保存，请刷新后重试。', 409);
-      }
       if (session && settings.name !== job.view.name) {
         const result = await session.request('rename', { name: settings.name });
         if (!result.ok || job.session !== session || active(job.view.status))
           throw new AppError('角色状态已变化，未保存参数，请刷新后重试。', 409);
       }
-      await this.context.voice.bindVoice(job, settings);
       if (
         this.context.closing() ||
         this.context.jobs.get(id) !== job ||
@@ -231,55 +213,6 @@ export class CharacterManagementService {
         );
       }
       Object.assign(job.view, settings, { providerName: provider.name });
-      await this.context.save();
-      return this.context.list().find((v) => v.id === job.view.id)!;
-    } finally {
-      job.updating = false;
-      this.context.execution.schedule(job);
-    }
-  }
-
-  async setVoice(id: string, value: unknown) {
-    const job = this.context.jobs.get(id);
-    if (!job) throw new AppError('Agent 不存在。', 404);
-    if (
-      this.context.closing() ||
-      isJobBusy(job) ||
-      ['joining', 'stopping'].includes(job.view.status)
-    )
-      throw new AppError('Agent 状态正在更新，请稍候。', 409);
-    const enabled = boolean(object(value).enabled, false);
-    if (enabled && !aiCharacterPermissions(job.view).chat)
-      throw new AppError('发送聊天权限已关闭，不能开启语音回复。');
-    job.updating = true;
-    try {
-      await this.context.voice.checkVoice({
-        ...job.view,
-        voiceReplies: enabled,
-      });
-      if (this.context.closing() || this.context.jobs.get(id) !== job)
-        throw new AppError('角色状态已变化，请刷新后重试。', 409);
-      const session = job.session;
-      if (session?.room) {
-        const result = await this.context.voice.syncSessionVoice(
-          session,
-          enabled,
-        );
-        if (!result.ok || job.session !== session)
-          throw new AppError('语音开关未生效，请重试。', 409);
-      }
-      await this.context.voice.bindVoice(job, {
-        ...job.view,
-        voiceReplies: enabled,
-      });
-      if (
-        this.context.closing() ||
-        this.context.jobs.get(id) !== job ||
-        job.session !== session ||
-        ['joining', 'stopping'].includes(job.view.status)
-      )
-        throw new AppError('角色状态已变化，请刷新后重试。', 409);
-      job.view.voiceReplies = enabled;
       await this.context.save();
       return this.context.list().find((v) => v.id === job.view.id)!;
     } finally {

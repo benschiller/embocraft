@@ -1,10 +1,5 @@
-import { bindChatRuntime, ChatStore, WorldChat, visibleEvent } from '../chat';
-import { ttsService, type ResolvedSpeech } from '../tts';
+import { ChatStore, WorldChat, visibleEvent } from '../chat';
 import { peekDatabaseClient } from '../../core/database/client';
-import { AppError } from '../../core/errors/app-error';
-import { domainEvents } from '../../core/events/domain-events';
-import { AgentSpeech } from './services/agent-speech.service';
-import { createSpatialSignaling } from './services/spatial-signaling.service';
 import { WorldStore } from './persistence/store';
 import { Room, Client, ServerError } from '@colyseus/core';
 import { Avatar, WorldState } from './world.schema';
@@ -37,20 +32,6 @@ export function getActiveWorld(): WorldRoom | undefined {
   return activeRoom;
 }
 export class WorldRoom extends Room<WorldState> {
-  private actorVoices = new Map<string, string>();
-  private releaseVoiceEvents?: () => void;
-  agentSpeech = new AgentSpeech(
-    () => this.state.players.values(),
-    (recipient, event) =>
-      this.clients
-        .find((c) => c.sessionId === recipient)
-        ?.send('agent.speech', event),
-    (actor, message) =>
-      this.clients
-        .find((c) => c.sessionId === actor)
-        ?.send('agent.speech.error', { message }),
-    (actor) => this.resolveActorSpeech(actor),
-  );
   private chatStore?: ChatStore;
   chat = new WorldChat(
     () => this.state.players.values(),
@@ -64,28 +45,12 @@ export class WorldRoom extends Room<WorldState> {
     { vy: number; grounded: boolean; input: Input; lastInput: number }
   >();
   private budget = new Map<string, { at: number; count: number }>();
-  private signalBudget = new Map<string, { at: number; count: number }>();
   private events: WorldEvent[] = [];
   private seq = 0;
   private ownsActive = false;
-  private spatialSignal = createSpatialSignaling(
-    (id) => this.state.players.get(id),
-    (recipient, signal) =>
-      this.clients
-        .find((c) => c.sessionId === recipient)
-        ?.send('spatial.signal', signal),
-  );
   private queue: Promise<void> = Promise.resolve();
   autoDispose = false;
   maxClients = 16;
-  private async resolveActorSpeech(actor: string): Promise<ResolvedSpeech> {
-    // Only trusted Agent management binds cloud services; raw world actions cannot select them.
-    const id = this.actorVoices.get(actor);
-    const speech = await ttsService.resolveSpeech(id);
-    if (this.actorVoices.get(actor) !== id)
-      throw new AppError('语音服务绑定已变更。', 409);
-    return speech;
-  }
   async onCreate(
     options: {
       store?: WorldStore;
@@ -113,40 +78,12 @@ export class WorldRoom extends Room<WorldState> {
       this.ownsActive = false;
       throw error;
     }
-    const unsubs = [
-      bindChatRuntime(this.chat, this.agentSpeech),
-      domainEvents.on('agent.voice.bound', ({ sessionId, serviceId }) => {
-        if (!this.state.players.has(sessionId)) return;
-        if (this.actorVoices.get(sessionId) === serviceId) return;
-        this.agentSpeech.cancel(sessionId);
-        this.actorVoices.set(sessionId, serviceId);
-      }),
-      domainEvents.on('agent.voice.unbound', ({ sessionId }) => {
-        this.agentSpeech.cancel(sessionId);
-        this.actorVoices.delete(sessionId);
-      }),
-      domainEvents.on('tts.service.changed', ({ serviceId }) => {
-        for (const [actor, boundId] of this.actorVoices) {
-          if (boundId === serviceId) this.agentSpeech.cancel(actor);
-        }
-      }),
-      domainEvents.on('tts.service.removing', ({ serviceId }) => {
-        if ([...this.actorVoices.values()].some((id) => id && id === serviceId))
-          throw new AppError(
-            '有 Agent 正在引用此服务或保存参数，请先完成更新，并在编辑参数中更换或移除语音服务。',
-            409,
-          );
-      }),
-    ];
-    this.releaseVoiceEvents = () => {
-      for (const unsub of unsubs) unsub();
-    };
     this.setPatchRate(50);
     this.onMessage('sync', (client) => {
       if (this.allow(client)) this.snapshot(client);
     });
     this.onMessage('action', (client, value) => {
-      if (!this.allow(client, value?.type === 'spatial.signal')) return;
+      if (!this.allow(client)) return;
       if (
         !value ||
         typeof value !== 'object' ||
@@ -155,18 +92,6 @@ export class WorldRoom extends Room<WorldState> {
       )
         return this.reply(client, '', false, 'invalid-envelope');
       const { id, type, payload } = value;
-      if (type === 'agent.voice') {
-        const player = this.state.players.get(client.sessionId);
-        if (
-          !player ||
-          !['ai-agent', 'scripted-agent'].includes(player.kind) ||
-          typeof payload?.enabled !== 'boolean'
-        )
-          return this.reply(client, id, false, 'invalid-agent-voice');
-        player.voiceReplies = payload.enabled;
-        if (!payload.enabled) this.agentSpeech.cancel(player.id);
-        return this.reply(client, id, true);
-      }
       if (type === 'rename') {
         const player = this.state.players.get(client.sessionId);
         if (
@@ -204,24 +129,6 @@ export class WorldRoom extends Room<WorldState> {
             error instanceof Error ? error.message : 'invalid-chat',
           );
         }
-      }
-      if (type === 'spatial.state') {
-        const player = this.state.players.get(client.sessionId);
-        if (
-          !player ||
-          player.kind !== 'human' ||
-          typeof payload?.sending !== 'boolean' ||
-          typeof payload?.listening !== 'boolean'
-        )
-          return this.reply(client, id, false, 'invalid-spatial-state');
-        if (!payload.sending) this.chat.cancelSpatial(client.sessionId);
-        player.voiceSending = payload.sending;
-        player.voiceListening = payload.listening;
-        return this.reply(client, id, true);
-      }
-      if (type === 'spatial.signal') {
-        this.spatialSignal(client.sessionId, payload);
-        return;
       }
       if (type === 'edit') {
         this.queue = this.queue
@@ -340,14 +247,9 @@ export class WorldRoom extends Room<WorldState> {
   async onLeave(client: Client, consented: boolean) {
     // Colyseus also calls onLeave when onJoin rejects before creating an avatar.
     if (!this.state.players.has(client.sessionId)) return;
-    this.agentSpeech.cancel(client.sessionId);
     const p = this.state.players.get(client.sessionId);
     this.chat.revoke(client.sessionId);
-    if (p) {
-      p.connected = false;
-      p.voiceSending = false;
-      p.voiceListening = false;
-    }
+    if (p) p.connected = false;
     const body = this.bodies.get(client.sessionId);
     if (body) body.input = { ...zero };
     if (!consented) {
@@ -365,16 +267,11 @@ export class WorldRoom extends Room<WorldState> {
       }
     }
     this.state.players.delete(client.sessionId);
-    this.actorVoices.delete(client.sessionId);
     this.bodies.delete(client.sessionId);
     this.budget.delete(client.sessionId);
-    this.signalBudget.delete(client.sessionId);
     this.event('left', client.sessionId, {});
   }
   async onDispose() {
-    this.releaseVoiceEvents?.();
-    this.actorVoices.clear();
-    this.agentSpeech.close();
     this.chat.clear();
     await this.queue;
     await this.store?.close();
@@ -410,9 +307,9 @@ export class WorldRoom extends Room<WorldState> {
   private reply(client: Client, id: string, ok: boolean, error?: string) {
     client.send('result', { id, ok, error, revision: this.state.revision });
   }
-  private allow(client: Client, signaling = false) {
-    const budget = signaling ? this.signalBudget : this.budget;
-    const limit = signaling ? 120 : 45;
+  private allow(client: Client) {
+    const budget = this.budget;
+    const limit = 45;
     const now = Date.now(),
       b = budget.get(client.sessionId) ?? { at: now, count: 0 };
     if (now - b.at > 1000) {
@@ -446,7 +343,6 @@ export class WorldRoom extends Room<WorldState> {
     if (this.events.length > 100) this.events.shift();
     for (const client of this.clients)
       if (visibleEvent(event, client.sessionId)) client.send('event', event);
-    this.agentSpeech.enqueue(actor, data);
   }
   private observe(client: Client, id: string) {
     const self = this.state.players.get(client.sessionId)!;

@@ -25,7 +25,6 @@ export type AICharacterRoutePort = {
   join(id: string): Promise<AICharacterSummary>;
   sessionId(id: string): string | undefined;
   remove(id: string): Promise<void>;
-  setVoice(id: string, value: unknown): Promise<AICharacterSummary>;
   settled(id: string): Promise<void>;
   stop(id: string): AICharacterSummary;
   readonly storageRevision: number;

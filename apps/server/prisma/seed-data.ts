@@ -19,33 +19,6 @@ export const DEFAULT_PROVIDERS = [
   },
 ] as const;
 
-export const DEFAULT_TTS_PROVIDER = {
-  id: 'local-default',
-  position: 0,
-  name: 'Speaches 语音服务',
-  type: 'speaches',
-  baseUrl: '',
-  apiKey: '',
-  model: 'speaches-ai/piper-zh_CN-huayan-medium',
-  voice: 'huayan',
-  speed: 1.0,
-  voiceLanguage: null,
-} as const;
-
-export const DEFAULT_ASR_PROVIDER = {
-  id: 'local-default',
-  position: 0,
-  name: 'Speaches 识别服务',
-  provider: 'whisper',
-  model: 'Systran/faster-whisper-base',
-  apiKey: '',
-  region: null,
-  workspaceId: null,
-  baseUrl: '',
-  temperature: 0,
-  prompt: '',
-} as const;
-
 export const DEFAULT_CHARACTER = {
   id: 'default-character',
   providerId: 'deepseek',
@@ -67,8 +40,6 @@ export const DEFAULT_CHARACTER = {
   maxTokens: 512,
   permissions: { move: true, chat: true, place: false, remove: false },
   skills: [],
-  voiceReplies: true,
-  voiceServiceId: 'local-default',
   thinking: 'disabled',
   reasoningEffort: 'high',
 } as const;

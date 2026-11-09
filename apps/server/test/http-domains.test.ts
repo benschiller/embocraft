@@ -1,6 +1,4 @@
 import { expect, it, vi } from 'vitest';
-import { LocalSpeech } from '../src/modules/asr';
-import { PiperModels } from '../src/modules/tts/services/piper-models.service';
 import { DatabaseManagementArchive } from '../src/persistence/database-management-archive';
 import { createTestServer } from './helpers/test-server';
 
@@ -12,72 +10,29 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-it('assembles public audio endpoints separately from protected management routes', async () => {
-  vi.spyOn(LocalSpeech.prototype, 'status').mockResolvedValue({
-    available: true,
-    reason: 'fixture',
-  });
-  const transcribe = vi
-    .spyOn(LocalSpeech.prototype, 'transcribe')
-    .mockResolvedValue('fixture text');
-  vi.spyOn(PiperModels.prototype, 'status').mockResolvedValue({
-    available: false,
-    reason: 'fixture',
-  });
+it('serves no voice or chat-audio routes after the voice stack removal', async () => {
   const server = await createTestServer({ origin });
   try {
-    const capabilities = await fetch(server.httpUrl + '/voice/capabilities', {
-      headers: { Origin: origin },
-    });
-    expect(capabilities.status).toBe(200);
-    expect(await capabilities.json()).toMatchObject({
-      local: { available: true },
-    });
-    const response = await fetch(
-      server.httpUrl + '/voice/transcribe?language=en',
-      {
-        method: 'POST',
-        headers: { Origin: origin, 'Content-Type': 'audio/wav' },
-        body: 'fixture audio',
-      },
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ text: 'fixture text' });
-    expect(transcribe.mock.calls[0][0]).toEqual(Buffer.from('fixture audio'));
-    expect(transcribe.mock.calls[0][2]).toBe('en');
-    const missing = await fetch(server.httpUrl + '/voice/tts/missing', {
-      headers,
-    });
-    expect(missing.status).toBe(404);
-    expect(await missing.json()).toEqual({
-      error: '管理接口不存在，请确认前后端版本一致。',
-    });
     const spec = await (await fetch(server.httpUrl + '/api-docs.json')).json();
-    expect(spec.paths['/voice/tts/piper/models']).toBeUndefined();
-    expect(spec.paths['/voice/tts/piper/install']).toBeUndefined();
+    expect(spec.paths['/health']?.get).toBeDefined();
     expect(
-      (
-        await fetch(server.httpUrl + '/voice/tts/piper/install', {
-          method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'speaches-ai/piper-en_US-lessac-medium',
-          }),
-        })
-      ).status,
-    ).toBe(404);
+      Object.keys(spec.paths).filter((path) => /^\/(voice|chat)\//.test(path)),
+    ).toEqual([]);
     for (const [path, method] of [
-      ['/health', 'get'],
-      ['/voice/capabilities', 'get'],
-      ['/voice/transcribe', 'post'],
-      ['/voice/asr/services', 'get'],
-      ['/voice/tts/services', 'get'],
+      ['/voice/capabilities', 'GET'],
+      ['/voice/transcribe', 'POST'],
+      ['/voice/tts/services', 'GET'],
+      ['/voice/asr/services', 'GET'],
+      ['/chat/audio', 'POST'],
     ]) {
-      expect(spec.paths[path]?.[method], `${method} ${path}`).toBeDefined();
+      const response = await fetch(server.httpUrl + path, {
+        method,
+        headers,
+      });
+      expect(response.status, `${method} ${path}`).toBe(404);
     }
   } finally {
     await server.close();
-    vi.restoreAllMocks();
   }
 });
 
@@ -91,8 +46,6 @@ it('protects each management domain and retains transport policies after path mi
       '/tasks',
       '/task-runs/missing/pause',
       '/console-sync/commands/missing',
-      '/voice/tts/services',
-      '/voice/asr/services',
     ];
     for (const path of paths) {
       const url = server.httpUrl + path;
@@ -127,21 +80,17 @@ it('protects each management domain and retains transport policies after path mi
       expect(badType.status, path).toBe(415);
       const badJson = await fetch(url, { method: 'POST', headers, body: '{' });
       expect(badJson.status, path).toBe(400);
-      expect((await badJson.json()).error).toContain(
-        path.startsWith('/voice/asr') ? 'JSON' : '无法处理请求',
-      );
+      expect((await badJson.json()).error).toContain('无法处理请求');
       const large = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify({ text: 'x'.repeat(40000) }),
       });
       expect(large.status, path).toBe(413);
-      if (!path.startsWith('/voice/asr')) {
-        const invalidKey = await fetch(url, {
-          headers: { ...headers, 'Idempotency-Key': 'invalid key' },
-        });
-        expect(invalidKey.status, path).toBe(400);
-      }
+      const invalidKey = await fetch(url, {
+        headers: { ...headers, 'Idempotency-Key': 'invalid key' },
+      });
+      expect(invalidKey.status, path).toBe(400);
       const unauthenticatedJson = await fetch(url, {
         method: 'POST',
         headers: { Origin: origin, 'Content-Type': 'application/json' },
@@ -157,12 +106,7 @@ it('protects each management domain and retains transport policies after path mi
         deniedPreflight.headers.get('access-control-allow-origin'),
       ).toBeNull();
     }
-    for (const path of [
-      '/ai-characters',
-      '/providers',
-      '/voice/tts/services',
-      '/voice/asr/services',
-    ]) {
+    for (const path of ['/ai-characters', '/providers']) {
       const response = await fetch(server.httpUrl + path, { headers });
       expect(response.status, path).toBe(200);
       expect(Array.isArray(await response.json())).toBe(true);
@@ -174,18 +118,6 @@ it('protects each management domain and retains transport policies after path mi
     );
     expect(plans.status).toBe(200);
     expect(await plans.json()).toMatchObject({ items: [], total: 0 });
-    const asrLarge = await fetch(server.httpUrl + '/voice/asr/services', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ text: 'x'.repeat(9000) }),
-    });
-    expect(asrLarge.status).toBe(413);
-    const voiceLarge = await fetch(server.httpUrl + '/voice/tts/services', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ text: 'x'.repeat(9000) }),
-    });
-    expect(voiceLarge.status).toBe(400); // Parsed under 32 KiB, rejected by service validation.
   } finally {
     await server.close();
   }
@@ -329,26 +261,6 @@ it('routes resource IDs and request bodies to their owning domain without old Ag
     expect(reassign).toHaveBeenCalledWith('plan-123', 'agent-456', {
       targetCharacterId: 'agent-456',
     });
-    const voice = await fetch(server.httpUrl + '/voice/tts/services', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        type: 'browser',
-        name: 'Browser',
-        voice: 'Test',
-        speed: 1,
-      }),
-    });
-    expect(voice.status).toBe(201);
-    const service = await voice.json();
-    expect(
-      (
-        await fetch(`${server.httpUrl}/voice/tts/services/${service.id}`, {
-          method: 'DELETE',
-          headers,
-        })
-      ).status,
-    ).toBe(204);
     for (const path of [
       '/agents',
       '/agents/missing',
@@ -356,8 +268,9 @@ it('routes resource IDs and request bodies to their owning domain without old Ag
       '/ai-characters/tasks',
       '/ai-characters/task-runs/missing/pause',
       '/ai-characters/voice-services',
-      '/voice/tts/piper/models',
-      '/ai-characters/voice-services/piper/models',
+      '/ai-characters/x/voice',
+      '/voice/tts/services',
+      '/voice/asr/services',
     ]) {
       expect(
         (await fetch(server.httpUrl + path, { headers })).status,
@@ -557,92 +470,6 @@ it('shares command receipts across management domains without adding receipts to
       state: 'committed',
       result: { id: provider.id },
     });
-
-    const voiceIds: string[] = [];
-    for (let i = 0; i < 2; i++) {
-      const voice = await fetch(server.httpUrl + '/voice/tts/services', {
-        method: 'POST',
-        headers: { ...headers, 'Idempotency-Key': 'tts-command' },
-        body: JSON.stringify({
-          type: 'browser',
-          name: 'Browser',
-          voice: 'Test',
-          speed: 1,
-        }),
-      });
-      expect(voice.status).toBe(201);
-      voiceIds.push((await voice.json()).id);
-    }
-    expect(new Set(voiceIds).size).toBe(2);
-    const voiceReceipt = await fetch(
-      server.httpUrl + '/console-sync/commands/tts-command',
-      { headers },
-    );
-    expect(await voiceReceipt.json()).toEqual({ state: 'unknown' });
-    // ASR has no management idempotency-key validation, including for reads.
-    const asr = await fetch(server.httpUrl + '/voice/asr/services', {
-      headers: { ...headers, 'Idempotency-Key': 'invalid key' },
-    });
-    expect(asr.status).toBe(200);
-  } finally {
-    await server.close();
-  }
-});
-
-it('lets new browsers read safe ASR assignments while only administrators can change them', async () => {
-  const server = await createTestServer({ origin });
-  const endpoint = server.httpUrl + '/voice/asr/assignments';
-  try {
-    const created = await fetch(server.httpUrl + '/voice/asr/services', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        provider: 'bailian',
-        region: 'beijing',
-        workspaceId: '',
-        model: 'fun-asr-realtime',
-        name: 'Cloud',
-        apiKey: 'test-private-key',
-      }),
-    });
-    const service = await created.json();
-    const body = JSON.stringify({ serviceId: service.id });
-    expect(
-      (
-        await fetch(endpoint + '/chat', {
-          method: 'PUT',
-          headers: { Origin: origin, 'Content-Type': 'application/json' },
-          body,
-        })
-      ).status,
-    ).toBe(401);
-    const saved = await fetch(endpoint + '/chat', {
-      method: 'PUT',
-      headers,
-      body,
-    });
-    expect(saved.status).toBe(200);
-    for (const clientHeaders of [
-      new Headers(),
-      new Headers({ Origin: origin }),
-    ]) {
-      const read = await fetch(endpoint, { headers: clientHeaders });
-      expect(read.status).toBe(200);
-      expect(read.headers.get('cache-control')).toBe('no-store');
-      expect((await read.json()).chat).toEqual({
-        id: service.id,
-        name: 'Cloud',
-        provider: 'bailian',
-      });
-    }
-    expect(
-      (await fetch(endpoint, { headers: { Origin: 'https://evil.test' } }))
-        .status,
-    ).toBe(403);
-    expect(
-      (await fetch(endpoint + '/clip', { method: 'PUT', headers, body }))
-        .status,
-    ).toBe(400);
   } finally {
     await server.close();
   }

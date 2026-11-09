@@ -2,11 +2,10 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAICharactersController } from './ai-characters';
 import { useProvidersController } from './providers/useProvidersController';
 import { useConsoleFeedback } from './useConsoleFeedback';
-import { useVoiceServices } from './voice/useVoiceServices';
 export function useConsoleController(open: boolean, initialTab?: 'characters') {
-  const [tab, setTab] = useState<
-    'characters' | 'plans' | 'providers' | 'voice' | 'asr' | 'asrInput'
-  >('characters');
+  const [tab, setTab] = useState<'characters' | 'plans' | 'providers'>(
+    'characters',
+  );
   const body = useRef<HTMLDivElement>(null);
   const feedback = useConsoleFeedback();
   const providers = useProvidersController(open, tab, feedback);
@@ -17,7 +16,6 @@ export function useConsoleController(open: boolean, initialTab?: 'characters') {
     providers.resetModels,
     feedback,
   );
-  const voices = useVoiceServices(open, feedback.setError);
   useEffect(() => {
     if (open && initialTab) setTab(initialTab);
   }, [open, initialTab]);
@@ -28,7 +26,6 @@ export function useConsoleController(open: boolean, initialTab?: 'characters') {
     ...feedback,
     ...providers,
     ...characters,
-    ...voices,
     tab,
     setTab,
     body,

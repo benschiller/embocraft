@@ -17,9 +17,6 @@ features:
   - icon: 🤖
     title: AI 玩家
     details: 支持 DeepSeek 等大模型，AI 玩家可观察、移动、聊天、编辑方块，支持多轮推理与任务规划。
-  - icon: 🎙️
-    title: 语音系统
-    details: 集成 Whisper ASR、Piper TTS 与空间音频，支持附近语音自动转写、Agent 空间语音回复及 3D 头顶字幕气泡。
   - icon: 🧱
     title: 体素世界
     details: 49×49 广阔地形、三维体素编辑、服务端权威物理碰撞与持久化存储。

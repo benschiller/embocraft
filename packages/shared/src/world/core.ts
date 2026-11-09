@@ -33,10 +33,6 @@ export type Player = Vec3 & {
   kind: string;
   yaw: number;
   connected: boolean;
-  // Voice pipeline flags, driven by the client and broadcast in presence.
-  voiceSending?: boolean;
-  voiceListening?: boolean;
-  voiceReplies?: boolean;
 };
 
 export function normalizePlayerName(value: unknown): string {

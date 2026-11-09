@@ -41,8 +41,8 @@ voice_grep() {
   hits=$(grep -rIil "whisper\|piper\|webrtc" . \
     --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=generated \
     --exclude=CHANGELOG.md --exclude=schema.prisma --exclude=check.sh \
-    | grep -v '/prisma/migrations/' || true)
-  [ -z "$hits" ] && echo "no whisper/piper/webrtc outside DB schema, migrations and changelog" && return 0
+    | grep -v '/prisma/migrations/' | grep -v 'docs/changelog/' || true)
+  [ -z "$hits" ] && echo "no whisper/piper/webrtc outside DB schema, migrations and docs/changelog" && return 0
   echo "$hits"; return 1
 }
 

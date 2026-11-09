@@ -25,36 +25,6 @@ services:
       retries: 10
       start_period: 3s
 
-  speech:
-    build:
-      context: .
-      dockerfile: Dockerfile.speech
-    container_name: embocraft-speech
-    restart: unless-stopped
-    networks:
-      - embocraft-network
-    environment:
-      # CPU image: reduce inference cost and avoid reloading after five idle minutes.
-      WHISPER__COMPUTE_TYPE: int8
-      WHISPER__TTL: -1
-      # Standard HTTP downloads are more reliable on Docker Desktop/proxy networks.
-      HF_HUB_DISABLE_XET: '1'
-    volumes:
-      - speech_cache:/home/ubuntu/.cache/huggingface/hub
-    ports:
-      - '${SPEECH_PORT:-${WHISPER_PORT:-8000}}:8000'
-    # The API starts only after all three Piper voices are cached.
-    healthcheck:
-      test:
-        - CMD
-        - /home/ubuntu/speaches/.venv/bin/python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 20m
-
   server:
     build:
       context: .
@@ -66,15 +36,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      speech:
-        condition: service_healthy
     environment:
       SERVER_HOST: 0.0.0.0
       DATABASE_URL: postgresql://${POSTGRES_USER:-embocraft}:${POSTGRES_PASSWORD:-embocraftpassword}@db:5432/${POSTGRES_DB:-embocraft}?schema=public
       WEB_ORIGIN: '${WEB_ORIGIN:-*}'
       AGENT_GATEWAY_TOKEN: '${AGENT_GATEWAY_TOKEN:-}'
       AGENT_GATEWAY_ALLOWED_ORIGINS: '${AGENT_GATEWAY_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}'
-      SPEECH_API_URL: '${SPEECH_API_URL:-http://speech:8000/v1}'
+      # Encrypts provider API keys at rest in Postgres (AES-256-GCM). Unset = plaintext.
+      DATA_ENCRYPTION_KEY: '${DATA_ENCRYPTION_KEY:-}'
     volumes:
       - server_data:/app/.data
     ports:
@@ -101,7 +70,5 @@ networks:
 volumes:
   postgres_data:
     name: embocraft_postgres_data
-  speech_cache:
-    name: embocraft_speech_cache
   server_data:
     name: embocraft_server_data

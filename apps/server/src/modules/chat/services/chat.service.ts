@@ -6,15 +6,11 @@ import {
   type Player,
 } from '@voxel/shared';
 import { ChatCredentials } from './credentials.service';
-import { ChatAudioClips } from './audio-clips.service';
-import { SpatialSpeech } from './spatial-speech.service';
 import type { ChatStore } from '../persistence/chat-store';
 
 /** Room-facing chat API; each stateful concern owns its own lifecycle. */
 export class WorldChat {
   private credentials: ChatCredentials;
-  private audioClips: ChatAudioClips;
-  private spatialSpeech: SpatialSpeech;
   private sent = new Map<string, number>();
 
   constructor(
@@ -23,22 +19,14 @@ export class WorldChat {
     private store?: ChatStore,
   ) {
     this.credentials = new ChatCredentials(players);
-    this.audioClips = new ChatAudioClips(
-      players,
-      (actor, value) => this.route(actor, value),
-      emit,
-    );
-    this.spatialSpeech = new SpatialSpeech(players, emit);
   }
 
   issue(id: string) {
-    this.spatialSpeech.cancel(id);
     this.sent.delete(id);
     return this.credentials.issue(id);
   }
 
   revoke(id: string) {
-    this.spatialSpeech.cancel(id);
     this.sent.delete(id);
     this.credentials.revoke(id);
   }
@@ -109,56 +97,8 @@ export class WorldChat {
         .filter((n): n is string => !!n),
     });
   }
-  beginUpload(actor: string, value: unknown) {
-    return this.audioClips.beginUpload(actor, value);
-  }
-
-  endUpload(actor: string) {
-    return this.audioClips.endUpload(actor);
-  }
-
-  publishAudio(
-    actor: string,
-    value: unknown,
-    bytes: Buffer,
-    durationMs: number,
-    text: string,
-  ) {
-    return this.audioClips.publishAudio(actor, value, bytes, durationMs, text);
-  }
-
-  beginSpatial(actor: string) {
-    return this.spatialSpeech.begin(actor);
-  }
-
-  claimSpatial(actor: string, id: string) {
-    return this.spatialSpeech.claim(actor, id);
-  }
-
-  previewSpatial(actor: string, id: string) {
-    return this.spatialSpeech.preview(actor, id);
-  }
-
-  publishSpatial(actor: string, id: string, text: string) {
-    return this.spatialSpeech.publish(actor, id, text);
-  }
-
-  endSpatial(actor: string, id: string) {
-    return this.spatialSpeech.end(actor, id);
-  }
-
-  cancelSpatial(actor: string) {
-    return this.spatialSpeech.cancel(actor);
-  }
-
-  audio(id: string, viewer: string) {
-    return this.audioClips.audio(id, viewer);
-  }
-
   clear() {
-    this.spatialSpeech.clear();
     this.credentials.clear();
-    this.audioClips.clear();
     this.sent.clear();
   }
 }

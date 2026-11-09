@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { aiCharactersApi } from './ai-characters/api';
 import { providersApi } from './providers/api';
 import { tasksApi } from './tasks';
-import { voiceApi } from './voice/api';
 import { initialAICharacter } from './ai-characters/model';
 import { freshProvider } from './providers/model';
 
@@ -130,14 +129,6 @@ it('routes agent operations through HTTP REST endpoints', async () => {
     expect.objectContaining({ method: 'DELETE' }),
   );
 
-  await aiCharactersApi.setVoiceReplies('a', false);
-  expect(http).toHaveBeenLastCalledWith(
-    'https://world.example/ai-characters/a/voice',
-    expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ enabled: false }),
-    }),
-  );
 });
 
 it('routes task plan queries and controls through HTTP REST endpoints', async () => {
@@ -216,12 +207,12 @@ it('routes task plan queries and controls through HTTP REST endpoints', async ()
   );
 });
 
-it('retains authenticated HTTP voice management and actionable HTTP errors', async () => {
+it('sends the admin token and surfaces actionable HTTP errors', async () => {
   const signal = new AbortController().signal;
   http.mockResolvedValueOnce(new Response('[]'));
-  await voiceApi.listVoiceServices(signal);
+  await providersApi.listProviders(signal);
   expect(http).toHaveBeenCalledWith(
-    'https://world.example/voice/tts/services',
+    'https://world.example/providers',
     expect.objectContaining({
       signal: expect.any(AbortSignal),
       headers: expect.objectContaining({
@@ -231,60 +222,9 @@ it('retains authenticated HTTP voice management and actionable HTTP errors', asy
   );
 
   http.mockResolvedValueOnce(
-    new Response(JSON.stringify({ error: '音色不可用' }), { status: 503 }),
+    new Response(JSON.stringify({ error: '服务不可用' }), { status: 503 }),
   );
-  await expect(voiceApi.listVoiceServices(signal)).rejects.toThrow('音色不可用');
-});
-
-it('uses the TTS domain for service CRUD and binary preview', async () => {
-  const signal = new AbortController().signal;
-  await voiceApi.listVoiceServices(signal);
-  expect(http).toHaveBeenLastCalledWith(
-    'https://world.example/voice/tts/services',
-    expect.objectContaining({ method: 'GET', signal: expect.any(AbortSignal) }),
-  );
-  const draft = {
-    type: 'browser' as const,
-    baseUrl: '',
-    model: '',
-    apiKey: '',
-    name: 'Browser',
-    voice: 'Test',
-    speed: 1,
-  };
-  await voiceApi.saveVoiceService(draft);
-  expect(http).toHaveBeenLastCalledWith(
-    'https://world.example/voice/tts/services',
-    expect.objectContaining({ method: 'POST', body: JSON.stringify(draft) }),
-  );
-  await voiceApi.saveVoiceService(draft, 'custom/voice');
-  expect(http).toHaveBeenLastCalledWith(
-    'https://world.example/voice/tts/services/custom%2Fvoice',
-    expect.objectContaining({ method: 'PUT' }),
-  );
-  http.mockResolvedValueOnce(new Response(null, { status: 204 }));
-  await voiceApi.deleteVoiceService('custom/voice');
-  expect(http).toHaveBeenLastCalledWith(
-    'https://world.example/voice/tts/services/custom%2Fvoice',
-    expect.objectContaining({ method: 'DELETE' }),
-  );
-  http.mockResolvedValueOnce(
-    new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
-  );
-  expect(
-    await (await voiceApi.previewVoice('custom/voice', 'hello', signal)).text(),
-  ).toBe('wav');
-  expect(http).toHaveBeenLastCalledWith(
-    'https://world.example/voice/tts/services/custom%2Fvoice/preview',
-    expect.objectContaining({
-      method: 'POST',
-      signal: expect.any(AbortSignal),
-      headers: expect.objectContaining({
-        Authorization: 'Bearer fixture-token',
-      }),
-      body: '{"text":"hello"}',
-    }),
-  );
+  await expect(providersApi.listProviders(signal)).rejects.toThrow('服务不可用');
 });
 
 it('saves a selected replacement role with the existing binding in one request', async () => {

@@ -4,7 +4,6 @@ import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { useI18n } from '../../i18n';
-import type { Connection } from '../../network/connection';
 import {
   clearGatewayToken,
   closeGateway,
@@ -13,24 +12,19 @@ import {
   onGatewayState,
   openGateway,
 } from '../../network/gateway';
-import { SpeechRecognitionPanel } from '../voice';
-import { AsrInputSettings } from './asr/AsrInputSettings';
 import { AICharacters } from './ai-characters';
 import { ConsoleHelp } from './ConsoleHelp';
 import { GatewayAccess } from './GatewayAccess';
 import { ProviderEditor } from './providers/ProviderEditor';
 import { TaskPlans } from './tasks';
 import { useConsoleController } from './useConsoleController';
-import { VoiceServices } from './voice/VoiceServices';
 
 type ConsoleProps = {
-  connection: Connection;
   open: boolean;
   initialTab?: 'characters';
   onClose: () => void;
 };
 export function ControlConsole({
-  connection,
   open,
   initialTab,
   onClose,
@@ -148,21 +142,6 @@ export function ControlConsole({
             >
               {t('console.tabs.providers')}
             </button>
-            <button
-              aria-pressed={tab === 'voice'}
-              onClick={() => setTab('voice')}
-            >
-              {t('console.tabs.voice')}
-            </button>
-            <button aria-pressed={tab === 'asr'} onClick={() => setTab('asr')}>
-              {t('console.tabs.asr')}
-            </button>
-            <button
-              aria-pressed={tab === 'asrInput'}
-              onClick={() => setTab('asrInput')}
-            >
-              {t('console.tabs.asrInput')}
-            </button>
           </nav>
         </div>
 
@@ -178,32 +157,7 @@ export function ControlConsole({
                 disabled={status !== 'ready'}
               />
             </div>
-            <div className="console-voice" hidden={tab !== 'voice'}>
-              <VoiceServices
-                services={controller.voiceServices}
-                onChange={controller.setVoiceServices}
-                active={open && status === 'ready' && tab === 'voice'}
-              />
-            </div>
-            <div className="console-voice" hidden={tab !== 'asr'}>
-              <SpeechRecognitionPanel
-                connection={connection}
-                active={open && status === 'ready' && tab === 'asr'}
-              />
-            </div>
-            <div hidden={tab !== 'asrInput'}>
-              <AsrInputSettings
-                active={open && status === 'ready' && tab === 'asrInput'}
-              />
-            </div>
-            <div
-              hidden={
-                tab === 'voice' ||
-                tab === 'asr' ||
-                tab === 'asrInput' ||
-                tab === 'plans'
-              }
-            >
+            <div hidden={tab === 'plans'}>
               {tab === 'providers' ? (
                 <ProviderEditor {...controller} />
               ) : (

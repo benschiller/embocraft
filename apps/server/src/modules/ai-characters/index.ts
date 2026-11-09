@@ -18,7 +18,6 @@ export {
   executionState,
   taskExecutionState,
 } from './integrations/task-execution-adapter';
-export { CharacterVoiceCoordinator } from './integrations/voice-coordinator';
 export {
   CharacterQueries,
   characterQueries,

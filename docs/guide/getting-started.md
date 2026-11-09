@@ -23,20 +23,19 @@ cp -n .env.example .env
 
 | 分组           | 配置内容                                             | 使用方式                             |
 | -------------- | ---------------------------------------------------- | ------------------------------------ |
-| 通用配置       | 前端来源、语音服务地址、管理网关令牌与允许来源       | 按需取消注释并填写                   |
-| 本地开发       | 数据库连接串、服务端监听地址与端口、本机语音工具路径 | 配合 `pnpm dev` 与本地数据库脚本使用 |
+| 通用配置       | 前端来源、管理网关令牌与允许来源                     | 按需取消注释并填写                   |
+| 本地开发       | 数据库连接串、服务端监听地址与端口                   | 配合 `pnpm dev` 与本地数据库脚本使用 |
 | Docker Compose | 宿主机映射端口、数据库初始化账号和密码               | 由 Compose 生成容器内部连接配置      |
 
-`WEB_ORIGIN` 和 `SPEECH_API_URL` 保持注释时，各运行方式使用自己的默认值：
+`WEB_ORIGIN` 保持注释时，各运行方式使用自己的默认值：
 
 | 配置                      | 本地开发                   | Docker Compose          |
 | ------------------------- | -------------------------- | ----------------------- |
 | 前端来源 `WEB_ORIGIN`     | `http://127.0.0.1:5173`    | `*`                     |
-| 语音服务 `SPEECH_API_URL` | `http://127.0.0.1:8000/v1` | `http://speech:8000/v1` |
 
-使用域名或自定义 Web 端口时，设置对应的 `WEB_ORIGIN` 和 `AGENT_GATEWAY_ALLOWED_ORIGINS`，后者支持逗号分隔的多个来源。覆盖语音服务地址时，填写从服务端所在环境可访问的地址。
+使用域名或自定义 Web 端口时，设置对应的 `WEB_ORIGIN` 和 `AGENT_GATEWAY_ALLOWED_ORIGINS`，后者支持逗号分隔的多个来源。
 
-模型服务凭据、托管 Agent 行为及 TTS/ASR 参数在 Web 控制台保存；独立 AI 玩家的参数见 [Agent 玩家文档](/agent/players#deepseek-命令行模式-cli-独立接入)。
+模型服务凭据与托管 Agent 行为在 Web 控制台保存；独立 AI 玩家的参数见 [Agent 玩家文档](/agent/players#deepseek-命令行模式-cli-独立接入)。
 
 ---
 
@@ -99,7 +98,7 @@ pnpm agent:mock
 
 ## Docker 全栈一键部署
 
-项目提供生产就绪的 Docker Compose 编排配置，整合了 Nginx 前端反代、Node.js 游戏服务端、PostgreSQL 17 以及 Speaches 语音容器。
+项目提供生产就绪的 Docker Compose 编排配置，整合了 Nginx 前端反代、Node.js 游戏服务端与 PostgreSQL 17。
 
 ### 1. 架构与端口映射
 
@@ -114,12 +113,12 @@ pnpm agent:mock
                                         ▼ (2567 端口)
                              ┌─────────────────────┐
                              │  Node.js 权威服务端  │
-                             └──┬────────────────┬─┘
-                  SQL 查询 (55432)│                │ ASR / TTS 推理 (8000)
-                                ▼                ▼
-                      ┌──────────────────┐  ┌──────────────────┐
-                      │ PostgreSQL 17 DB │  │ Speaches 语音容器 │
-                      └──────────────────┘  └──────────────────┘
+                             └──────────┬──────────┘
+                                        │ SQL 查询 (55432)
+                                        ▼
+                             ┌─────────────────────┐
+                             │  PostgreSQL 17 DB   │
+                             └─────────────────────┘
 ```
 
 ### 2. 一键启动指令
@@ -139,7 +138,6 @@ docker compose up -d --build
 - **Web 游戏与管理界面**：`http://localhost`（默认 80 端口，前端通过 Nginx 统一反代 WebSocket）
 - **Swagger 交互式 API 文档**：`http://localhost:2567/api-docs`
 - **本地 PostgreSQL 实例**：宿主机暴露 `55432` 端口，数据持久化于 `voxel_postgres_data` 卷。
-- **Speaches 语音推理服务**：容器内 `8000` 端口，包含离线 Whisper 识别与 Piper 语音合成。
 
 ### 3. 常用运维命令
 
@@ -150,7 +148,7 @@ pnpm docker:logs
 # 安全停止并保留所有数据卷
 pnpm docker:down
 
-# 停止并彻底销毁所有数据卷（注意：将彻底清空世界数据与已下载模型缓存）
+# 停止并彻底销毁所有数据卷（注意：将彻底清空世界数据）
 docker compose down -v
 ```
 
@@ -163,7 +161,6 @@ docker compose down -v
 | `WEB_PORT`          | `80`            | Web 界面与 Nginx 反代入口    |
 | `SERVER_PORT`       | `2567`          | 服务端直接访问端口           |
 | `POSTGRES_PORT`     | `55432`         | 数据库宿主机访问端口         |
-| `SPEECH_PORT`       | `8000`          | 语音服务宿主机访问端口       |
 | `POSTGRES_USER`     | `voxel`         | 数据库初始化用户             |
 | `POSTGRES_PASSWORD` | `voxelpassword` | 数据库初始化密码，部署前修改 |
 | `POSTGRES_DB`       | `voxel`         | 数据库名称                   |
@@ -184,8 +181,7 @@ Compose 使用 `POSTGRES_*` 生成服务端的容器内 `DATABASE_URL`。示例�
 | **破坏方块**     | 准星对准 + 鼠标左键  | 在 6 格有效交互距离内破坏目标方块（基岩不可破坏）。          |
 | **放置方块**     | 准星对准 + 鼠标右键  | 在目标表面放置选定材质的方块（支持草地、泥土、石块、木头）。 |
 | **材质切换**     | 画面底部快捷栏       | 点击选中所需材质，或点击底部 `Remove / Place` 辅助按键。     |
-| **多模态社交**   | 右下角控制台         | 支持文字聊天、定向私信、长语音听写以及语音留言。             |
-| **空间语音对讲** | 右上角语音面板       | 开启麦克风与他人进行具备 3D 距离衰减的真实 WebRTC 对讲。     |
+| **文字聊天**     | 右下角控制台         | 支持公开文字聊天与定向私信。                                 |
 
 ::: info 权威物理校验
 所有方块破坏与放置均在服务端进行距离校验、相邻支撑结构校验、玩家包围盒碰撞检测以及版本并发锁判定，客户端严禁越权伪造。
@@ -207,7 +203,7 @@ pnpm format:check
 pnpm lint:fix
 
 # 执行端到端虚拟世界集成验收测试
-pnpm test:integration
+pnpm --filter @voxel/server exec tsx test/integration/world-client.ts
 ```
 
 ---
@@ -219,7 +215,6 @@ pnpm test:integration
 3. 进入 **Agent 玩家 → 创建 Agent**：
    - 设定角色昵称与角色系统提示词；
    - 选择预设的 LLM 思考模型服务（如 DeepSeek）；
-   - 配置自主发音音色（如 Piper 华岩或百炼 Qwen-TTS）；
    - 配置执行配额（最大步数、工具调用深度）。
 4. 保存后点击 **加入世界**，Agent 将立刻化身 3D 体素角色空降世界并待命！
 

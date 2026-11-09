@@ -1,6 +1,5 @@
 import type { AICharacterFormProps } from './types';
 import { CharacterBudgetSettings } from './CharacterBudgetSettings';
-import { CharacterVoiceSettings } from './CharacterVoiceSettings';
 import { CharacterCapabilities } from './CharacterCapabilities';
 import { CharacterProfileFields } from './CharacterProfileFields';
 import { useState } from 'react';
@@ -22,7 +21,6 @@ export function AICharacterForm(props: AICharacterFormProps) {
   const { t } = useI18n();
   const {
     providers,
-    voiceServices,
     agent,
     setAgent,
     editingAgent,
@@ -128,11 +126,6 @@ export function AICharacterForm(props: AICharacterFormProps) {
             validProvider={!!validProvider}
           />
           <CharacterCapabilities agent={agent} setAgent={setAgent} />
-          <CharacterVoiceSettings
-            agent={agent}
-            setAgent={setAgent}
-            voiceServices={voiceServices}
-          />
           <CharacterBudgetSettings agent={agent} setAgent={setAgent} />
           {!editingAgent && (
             <label className="agent-check agents-join-option">

@@ -8,7 +8,6 @@ import type { CharacterDetail, CharacterQueryPort } from '../ports';
 
 const include = {
   provider: { select: { name: true } },
-  voiceService: { select: { name: true } },
   state: {
     include: {
       currentRun: { select: { id: true, source: true, snapshot: true } },
@@ -36,8 +35,10 @@ function detail(row: CharacterRow): CharacterDetail {
   const {
     state,
     provider,
-    voiceService,
     runs,
+    // Voice columns stay in the schema (no destructive migration) but are unused.
+    voiceReplies: _voiceReplies,
+    voiceServiceId: _voiceServiceId,
     position: _position,
     createdAt,
     updatedAt: _updatedAt,
@@ -52,7 +53,7 @@ function detail(row: CharacterRow): CharacterDetail {
   const current = state.currentRun;
   const action = execution?.effects.activeAction;
   // Startup normalizes legacy settings before serving requests. SQL NULL represents
-  // an omitted optional setting, except the existing empty voice-service ID.
+  // an omitted optional setting.
   const settings = Object.fromEntries(
     Object.entries(config).filter(([, value]) => value !== null),
   ) as AICharacterSettings;
@@ -60,8 +61,6 @@ function detail(row: CharacterRow): CharacterDetail {
     ...settings,
     id: row.id,
     providerName: provider.name,
-    voiceServiceId: row.voiceServiceId ?? '',
-    voiceServiceName: voiceService?.name,
     createdAt: createdAt?.getTime() ?? 0,
     status: state.status as CharacterDetail['status'],
     task: execution?.task.current,

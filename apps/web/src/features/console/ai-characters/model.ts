@@ -18,8 +18,6 @@ export const initialAICharacter: AICharacterSettings = {
   maxTokens: 512,
   permissions: { move: true, chat: true, place: false, remove: false },
   skills: [],
-  voiceReplies: false,
-  voiceServiceId: '',
   thinking: 'disabled',
   reasoningEffort: 'high',
 };

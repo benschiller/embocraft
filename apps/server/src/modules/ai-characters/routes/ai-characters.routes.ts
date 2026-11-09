@@ -333,39 +333,5 @@ export function createAICharacterRouter(
     }),
   );
 
-  /**
-   * @openapi
-   * /ai-characters/{id}/voice:
-   *   post:
-   *     security:
-   *       - ManagementBearer: []
-   *     summary: 配置 AI 角色音色与发音服务
-   *     tags:
-   *       - AI Characters
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *     responses:
-   *       200:
-   *         description: 音色设置成功
-   */
-  router.post(
-    '/ai-characters/:id/voice',
-    route(async (req, res) => {
-      const result = await write(req, (manager) =>
-        manager.setVoice(String(req.params.id), req.body),
-      );
-      res.json(result);
-    }),
-  );
   return router;
 }

@@ -13,20 +13,7 @@ it('documents all server WebSocket channels', () => {
   const channelAddresses = Object.values(asyncApiSpec.channels).map(
     (c) => c.address,
   );
-  expect(channelAddresses).toContain('/voice/asr/realtime');
-  expect(channelAddresses).toContain('/ai-characters/gateway');
-});
-
-it('documents query parameters and message types for realtime ASR', () => {
-  const asrChannel = asyncApiSpec.channels.realtimeAsr;
-  expect(asrChannel.bindings.ws.query.properties).toHaveProperty('language');
-  expect(asrChannel.bindings.ws.query.properties).toHaveProperty('serviceId');
-  expect(asrChannel.messages).toHaveProperty('audioChunk');
-  expect(asrChannel.messages).toHaveProperty('asrReady');
-  expect(asrChannel.messages).toHaveProperty('asrPartial');
-  expect(asrChannel.messages).toHaveProperty('asrFinal');
-  expect(asrChannel.messages).toHaveProperty('asrFinished');
-  expect(asrChannel.messages).toHaveProperty('asrError');
+  expect(channelAddresses).toEqual(['/ai-characters/gateway']);
 });
 
 it('documents handshake and notifications for management gateway', () => {

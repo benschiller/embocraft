@@ -1,25 +1,15 @@
 import { delay, Session, until } from '@voxel/agent-runtime';
 import type { ChatData } from '@voxel/shared';
 import assert from 'node:assert/strict';
-import { LocalSpeech } from '../../src/modules/asr';
 import { createTestServer } from '../helpers/test-server';
 
 process.env.DATABASE_URL = '';
 process.env.WEB_ORIGIN = 'http://127.0.0.1:5187';
-const speech = new LocalSpeech();
-const server = await createTestServer({
-  speech,
-  origin: process.env.WEB_ORIGIN,
-});
+const server = await createTestServer({ origin: process.env.WEB_ORIGIN });
 const sessions: Session[] = [];
 try {
   const room = server.world;
   const url = server.httpUrl;
-  speech.normalize = async () => ({
-    bytes: Buffer.from('normalized-audio'),
-    durationMs: 1000,
-  });
-  speech.transcribe = async () => 'fixture transcript';
   for (const [name, kind] of [
     ['Sender', 'human'],
     ['Receiver', 'human'],
@@ -75,111 +65,15 @@ try {
       })
     ).ok,
   );
-  const headers = (s: Session) => ({
-    Origin: process.env.WEB_ORIGIN!,
-    Authorization: `Bearer ${s.chatToken}`,
-  });
-  const upload = await fetch(
-    `${url}/chat/audio?scope=private&to=${ids[1]},${ids[2]}`,
-    {
-      method: 'POST',
-      headers: { ...headers(a), 'Content-Type': 'audio/webm' },
-      body: 'fixture-encoded',
-    },
-  );
-  assert.equal(upload.status, 201);
-  const clip = (await upload.json()) as {
-    audioId: string;
-    transcriptAvailable: boolean;
-  };
-  assert(clip.transcriptAvailable);
-  await until(() =>
-    ai.events.some(
-      (e) => (e.data as Partial<ChatData>).audioId === clip.audioId,
-    ),
-  );
+  // Voice actions were removed with the voice stack; the room rejects them.
   assert(
-    !out.events.some(
-      (e) => (e.data as Partial<ChatData>).audioId === clip.audioId,
-    ),
+    !(await a.request('spatial.state', { sending: true, listening: false })).ok,
   );
-  for (const s of [a, b, ai])
-    assert.equal(
-      (
-        await fetch(`${url}/chat/audio/${clip.audioId}`, {
-          headers: headers(s),
-        })
-      ).status,
-      200,
-    );
-  assert.equal(
-    (
-      await fetch(`${url}/chat/audio/${clip.audioId}`, {
-        headers: headers(out),
-      })
-    ).status,
-    404,
-  );
-  assert.equal(
-    (
-      await fetch(`${url}/chat/audio/${clip.audioId}`, {
-        headers: { Origin: process.env.WEB_ORIGIN! },
-      })
-    ).status,
-    401,
-  );
-  assert.equal(
-    (
-      await fetch(`${url}/chat/audio/${clip.audioId}`, {
-        headers: { ...headers(a), Origin: 'https://other.example' },
-      })
-    ).status,
-    403,
-  );
+  assert(!(await ai.request('agent.voice', { enabled: true })).ok);
   const oldToken = b.chatToken;
   await b.reconnect();
   assert.notEqual(oldToken, b.chatToken);
-  assert.equal(
-    (
-      await fetch(`${url}/chat/audio/${clip.audioId}`, {
-        headers: { ...headers(b), Authorization: `Bearer ${oldToken}` },
-      })
-    ).status,
-    401,
-  );
-  assert.equal(
-    (await fetch(`${url}/chat/audio/${clip.audioId}`, { headers: headers(b) }))
-      .status,
-    200,
-  );
-  // Only explicitly participating humans receive signaling, never agents or bystanders.
-  assert(
-    (await a.request('spatial.state', { sending: true, listening: false })).ok,
-  );
-  assert(
-    (await b.request('spatial.state', { sending: false, listening: true })).ok,
-  );
-  assert(
-    !(await ai.request('spatial.state', { sending: true, listening: true })).ok,
-  );
-  a.room.send('action', {
-    id: 'signal',
-    type: 'spatial.signal',
-    payload: { to: ids[1], description: { type: 'offer', sdp: 'fixture' } },
-  });
-  await until(() => b.spatialSignals.length === 1);
-  assert.equal(out.spatialSignals.length, 0);
-  assert.equal(ai.spatialSignals.length, 0);
-  assert(
-    (await b.request('spatial.state', { sending: false, listening: false })).ok,
-  );
-  a.room.send('action', {
-    id: 'signal2',
-    type: 'spatial.signal',
-    payload: { to: ids[1], description: { type: 'offer', sdp: 'fixture' } },
-  });
-  await delay(100);
-  assert.equal(b.spatialSignals.length, 1);
+  assert.throws(() => room.chat.authenticate(oldToken));
   a.room.send('action', {
     id: 'yaw',
     type: 'move',
@@ -187,129 +81,12 @@ try {
   });
   await delay(450);
   assert(Math.abs(room.state.players.get(ids[0])!.yaw - 1.2) < 0.001);
-  // Nearby speech uses authenticated, single-use capture tickets and restricted events.
-  room.state.players.get(ids[2])!.x = room.state.players.get(ids[0])!.x;
-  room.state.players.get(ids[2])!.z = room.state.players.get(ids[0])!.z - 2;
-  const startSpeech = async () =>
-    fetch(`${url}/chat/spatial/start`, { method: 'POST', headers: headers(a) });
-  const ticketResponse = await startSpeech();
-  assert.equal(ticketResponse.status, 200);
-  const ticket = (await ticketResponse.json()) as { id: string };
-  const previewResponse = await fetch(
-    `${url}/chat/spatial/${ticket.id}/preview`,
-    {
-      method: 'POST',
-      headers: { ...headers(a), 'Content-Type': 'audio/wav' },
-      body: 'preview speech',
-    },
-  );
-  assert.equal(previewResponse.status, 200);
-  assert.equal(
-    ((await previewResponse.json()) as { text: string }).text,
-    'fixture transcript',
-  );
-  await delay(100);
-  assert(
-    !ai.events.some((e) => (e.data as Partial<ChatData>).scope === 'nearby'),
-    'Preview must never reach the Agent',
-  );
-  assert(
-    !out.events.some((e) => (e.data as Partial<ChatData>).scope === 'nearby'),
-  );
-  const forgedPreview = await fetch(
-    `${url}/chat/spatial/${ticket.id}/preview`,
-    {
-      method: 'POST',
-      headers: { ...headers(out), 'Content-Type': 'audio/wav' },
-      body: 'forged preview',
-    },
-  );
-  assert.equal(forgedPreview.status, 409);
-  const captionResponse = await fetch(`${url}/chat/spatial/${ticket.id}`, {
-    method: 'POST',
-    headers: { ...headers(a), 'Content-Type': 'audio/webm' },
-    body: 'fixture speech',
-  });
-  assert.equal(captionResponse.status, 200);
-  const caption = (await captionResponse.json()) as {
-    scope: string;
-    recipients: string[];
-  };
-  assert.equal(caption.scope, 'nearby');
-  assert(caption.recipients.includes(ids[2]));
-  assert(!caption.recipients.includes(ids[3]));
-  await until(() =>
-    ai.events.some((e) => (e.data as Partial<ChatData>).scope === 'nearby'),
-  );
-  assert(
-    (await ai.observe()).events.some(
-      (e) => (e.data as Partial<ChatData>).scope === 'nearby',
-    ),
-  );
-  assert(
-    !(await out.observe()).events.some(
-      (e) => (e.data as Partial<ChatData>).scope === 'nearby',
-    ),
-  );
-  assert.equal(
-    (
-      await fetch(`${url}/chat/spatial/${ticket.id}`, {
-        method: 'POST',
-        headers: { ...headers(a), 'Content-Type': 'audio/webm' },
-        body: 'replay',
-      })
-    ).status,
-    409,
-  );
-  const late = (await (await startSpeech()).json()) as { id: string };
-  await a.request('spatial.state', { sending: false, listening: false });
-  assert.equal(
-    (
-      await fetch(`${url}/chat/spatial/${late.id}`, {
-        method: 'POST',
-        headers: { ...headers(a), 'Content-Type': 'audio/webm' },
-        body: 'late',
-      })
-    ).status,
-    409,
-  );
-  assert.equal((await startSpeech()).status, 409);
-  // A mute also aborts an already-running inference; a late completion cannot publish.
-  await a.request('spatial.state', { sending: true, listening: false });
-  const inflightTicket = (await (await startSpeech()).json()) as { id: string };
-  let inferenceSignal: AbortSignal | undefined,
-    finishInference!: (text: string) => void;
-  speech.transcribe = async (_audio, _type, _language, signal) => {
-    inferenceSignal = signal;
-    return new Promise((resolve) => {
-      finishInference = resolve;
-    });
-  };
-  const inFlight = fetch(`${url}/chat/spatial/${inflightTicket.id}`, {
-    method: 'POST',
-    headers: { ...headers(a), 'Content-Type': 'audio/webm' },
-    body: 'inflight',
-  });
-  await until(() => !!inferenceSignal);
-  const beforeCancel = ai.events.filter(
-    (e) => (e.data as Partial<ChatData>).scope === 'nearby',
-  ).length;
-  await a.request('spatial.state', { sending: false, listening: false });
-  assert(inferenceSignal!.aborted);
-  finishInference('must never publish');
-  assert.equal((await inFlight).status, 400);
-  await delay(60);
-  assert.equal(
-    ai.events.filter((e) => (e.data as Partial<ChatData>).scope === 'nearby')
-      .length,
-    beforeCancel,
-  );
   const token = a.chatToken;
   await a.close();
   await until(() => !room.state.players.has(ids[0]));
   assert.throws(() => room.chat.authenticate(token));
   console.log(
-    'PASS: four real WebSocket clients, public/private events and agent observation isolation, private audio HTTP ACL, token rotation/revocation, origin checks, opt-in human-only signaling, nearby speech agent delivery/observation isolation, replay/mute rejection, idle yaw. Audio conversion/transcript are fixtures.',
+    'PASS: four real WebSocket clients, public/private events and agent observation isolation, voice actions rejected, token rotation/revocation, idle yaw.',
   );
 } finally {
   await Promise.all(sessions.map((s) => s.close()));

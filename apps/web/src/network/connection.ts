@@ -8,7 +8,6 @@ import {
   type Edit,
   type WorldEvent,
   type ChatEntry,
-  type AgentSpeechEvent,
 } from '@voxel/shared';
 import { i18n } from '../i18n';
 const ROOM_ERROR_NAME_TAKEN = 4409;
@@ -23,24 +22,6 @@ export class Connection {
   messages: string[] = [];
   chats: ChatEntry[] = [];
   chatToken = '';
-  private recording = false;
-  get chatRecording() {
-    return this.recording;
-  }
-  set chatRecording(value: boolean) {
-    if (value !== this.recording) {
-      this.recording = value;
-      this.onChange();
-    }
-  }
-  voiceLabRecording = false;
-  stopSpatialInput = () => {};
-  onSpatialSignal: (value: {
-    from: string;
-    description?: RTCSessionDescriptionInit;
-    candidate?: RTCIceCandidateInit;
-  }) => void = () => {};
-  onAgentSpeech: (value: AgentSpeechEvent) => void = () => {};
   private replies = new Map<
     string,
     {
@@ -62,7 +43,6 @@ export class Connection {
   }
   private clearCommunication() {
     this.chatToken = '';
-    this.stopSpatialInput();
     for (const reply of this.replies.values()) {
       clearTimeout(reply.timer);
       reply.reject(Error('游戏连接已断开。'));
@@ -149,12 +129,6 @@ export class Connection {
           this.chatToken = value.token;
           this.onChange();
         }
-      });
-      room.onMessage('spatial.signal', (value) => {
-        if (activeRoom()) this.onSpatialSignal(value);
-      });
-      room.onMessage('agent.speech', (value: AgentSpeechEvent) => {
-        if (activeRoom()) this.onAgentSpeech(value);
       });
       room.onMessage('event', (e: WorldEvent) => {
         if (!activeRoom()) return;

@@ -1,5 +1,7 @@
 # 服务端架构
 
+> **Floperati 分支：** 语音栈已移除：`core/audio`、`modules/asr`、`modules/tts`、聊天音频与空间语音路由、Agent 语音回复与点对点信令均已删除；`/voice/*` 与 `/chat/*` HTTP 路由不再存在。语音相关的数据库表与列保留（无破坏性迁移）但不再读写。下文中涉及语音的段落为上游历史说明，已按需精简。
+
 `index.ts` 是唯一自动加载仓库 `.env` 的入口，负责启动与 SIGINT/SIGTERM 处理。导入 `app.ts` 或 `server.ts` 不会监听端口或加载 `.env`。
 
 ## 装配与生命周期
@@ -24,20 +26,16 @@
 | `core/concurrency`      | 命令队列                                             |
 | `core/http`             | HTTP 中间件、输入校验、Origin 判断与 health 路由     |
 | `core/openapi`          | OpenAPI schema、Swagger 文档生成与 docs 路由         |
-| `core/transport`        | Socket 路由类型、Gateway/ASR/Colyseus 路径分发和关闭 |
-| `core/audio`            | PCM 校验、FFmpeg 规整、Speaches 端点与模型发现       |
+| `core/transport`        | Socket 路由类型、Gateway/Colyseus 路径分发和关闭     |
 | `persistence`           | 角色与任务联合存档、迁移、提交及失败处理             |
 | `modules/console-sync`  | 控制台指令路由、幂等回执与状态变更事件               |
 | `modules/ai-characters` | 生产依赖注入、Agent 生命周期编排与配置文件适配       |
 | `modules/providers`     | 模型提供商持久化存储与模型列表服务                   |
 | `modules/tasks`         | 任务计划、运行历史与执行控制领域服务                 |
 | `modules/gateway`       | 管理令牌与 WebSocket 状态通知                        |
-| `modules/asr`           | ASR 配置存储、Whisper/百炼识别、调度、转写与能力路由 |
-| `modules/tts`           | 音色服务存储、Piper/远程合成、模型状态与管理路由     |
-| `modules/chat`          | 消息、附件、音频票据及私聊权限                       |
-| `modules/world`         | 权威物理房间、Schema、持久化、SSE、Agent 语音与信令  |
+| `modules/chat`          | 文字消息、聊天记录及私聊权限                         |
+| `modules/world`         | 权威物理房间、Schema、持久化、SSE                    |
 
-`asr/engines/whisper/whisper.adapter.ts` 负责通过独立语音服务 API 进行 Whisper 识别。Piper 模型和声音服务的管理路由归 `tts`，HTTP 地址为 `/voice/tts/services`；Agent 音色绑定由 Agent 管理器处理，删除服务通过领域事件检查角色引用，音频模块不反向依赖 Agent。`character-manager.service.ts`、`orchestrator.service.ts` 位于 `ai-characters/services/`，Provider 仓储契约与数据库实现归属 `providers/persistence/`，`tasks` 模块按 `domain/`、`services/`、`persistence/` 和 `routes/` 分层；`ports.ts` 集中声明管理接口、执行状态与宿主契约。角色与任务的数据库映射分别归属 `ai-characters/persistence` 与 `tasks/persistence`，`src/persistence/database-management-archive.ts` 在同一事务中调用两者。应用层串行保存后更新已提交视图，再调用提交通知回调；`application/management-persistence.ts` 连接快照参与者、失败保护和提交通知；角色编排器提供参与者并连接 `ConsoleSyncEvents.commit()`。角色运行快照及恢复位于 `ai-characters/services/`，存储失败后由执行服务保护受影响的角色。
 
 全局 `persistence/` 提供跨模块存档契约、联合数据库事务驱动与结构规整；联合数据库驱动只通过角色和任务的持久化门面使用它们各自的数据映射，不依赖运行时或 HTTP。串行提交协调位于 `application/management-commit.ts`，任务模块不反向依赖全局存档层。`storageRevision` 只在保存失败时递增，`flush(since)` 只等待已排队的保存并检查失败代次，不捕获新快照。
 
@@ -60,15 +58,6 @@ Agent 共用运行时继续位于 `packages/agent-runtime`，不迁入服务端�
 `chat` 按 `domain/`、`services/`、`persistence/` 与 `routes/` 分层：`domain/visibility.ts` 按消息范围、发送者与接收者判断可见性；`services/` 集中聊天、凭据、音频缓存、空间语音票据、运行期绑定及 ASR 协调，统一使用 `*.service.ts` 命名；`routes/chats.routes.ts` 通过零参 `createChatRouter()` 挂载 `/chat` 的 HTTP 接口与 OpenAPI 注解。路由和语音协调测试与源码共置，跨包的 `test/chat.test.ts` 保留在集成测试目录。模块门面导出 `WorldChat`、`createChatRouter`、`bindChatRuntime` 与 `visibleEvent`，聊天鉴权、可见性、语音处理和票据生命周期保持不变。
 
 `world` 的地形、玩家名称和输入/编辑校验规则归入 `domain/`，数据库存储与就近测试归入 `persistence/`，HTTP/SSE 路由与测试归入 `routes/worlds.routes.ts` 及同名测试文件。`world.room.ts` 与 `world.schema.ts` 留在模块根部，分别负责 Colyseus 房间生命周期与同步状态 Schema；Schema 依赖框架，不属于纯领域规则。模块门面导出 `WorldRoom`、`getActiveWorld`、`WorldStore` 和零参 `createWorldRouter`（合并 `/world` 与 `/world/presence`）。Schema 字段与注册顺序、物理模拟、持久化、房间生命周期及 `/world`、`/world/presence` 行为保持不变。跨共享物理实现的世界规则测试与服务器生命周期测试保留在 `test/`。
-
-音频能力按职责拆为 `core/audio`、`modules/asr`、`modules/tts` 三部分，空间语音与 Agent 发声归入 `modules/world`：
-
-- `core/audio/` 只放无业务状态的共享基础设施：`pcm-wav.ts`（无 I/O 的 PCM WAV 格式、时长与音量校验）、`normalize.ts`/`command.ts`（FFmpeg、子进程与临时文件处理）、`speaches-models.ts`（Speaches 模型与音色发现）以及 `voice-service-connection.ts`（ASR/TTS 共用的连接参数校验）。该目录只依赖 `core`。
-- `modules/asr/` 按 `persistence/`、`services/`、`routes/`、`sockets/` 分层。`routes/asr.routes.ts` 暴露零参 `createAsrRouter()`，挂载 `capabilities → transcribe → asr` 路由，管理鉴权由 `server.ts` 统一前置；`sockets/asr.socket.ts` 的 `installAsrSocket` 注册 `/voice/asr/realtime`。门面导出 `createAsrRouter`、`AsrService`、`asrService`、`DatabaseAsrServicePersistence`、`installAsrSocket`、`AsrBridge`、`LocalSpeech`、`localSpeech` 与 `scheduleSpeech`。`/voice/capabilities` 同时报告 Whisper 与 Piper 状态，经 `tts` 门面读取 `PiperModels`。
-- `modules/tts/` 按 `persistence/`、`services/`、`routes/` 分层，合成契约位于 `services/speech-synthesizer.ts`，无状态领域服务位于 `services/tts.service.ts`（`TtsService` / `ttsService`）。`routes/tts.routes.ts` 的零参 `createTtsRouter()` 通过 management 管线注册 `/voice/tts`。门面导出 `createTtsRouter`、`TtsService`、`ttsService`、`DatabaseVoiceServicePersistence`、`PiperTts`、`PiperModels` 与 `SpeechSynthesizer`。跨模块音色绑定与变更通过 `core/events/domain-events.ts` 事件总线协作，`tts` 不依赖 `asr`、`chat`、`ai-characters` 或 `world`。
-- 两个服务仍包含原有校验与运行时协调职责，支持注入持久化适配器；生产使用 PostgreSQL，测试使用内存实现或 `vi.mock`。默认数据、串行写入、数据库事务、识别占用、音色绑定及删除保护行为保持不变。
-
-`AgentSpeech` 位于 `modules/world/services/agent-speech.service.ts`，负责语音合成队列、空间听众筛选和音频缓存访问。`WorldRoom` 装配它并通过 `bindChatRuntime` 单向绑定到 `chat` 模块，在聊天消息送达后入队，在关闭语音、离线、音色服务变更或房间销毁时取消或清理，避免 `chat → world` 的循环依赖。空间信令由 `modules/world/services/spatial-signaling.service.ts` 提供，通过 `WorldRoom` 消息转发，没有独立 Socket 端点。Agent 核心调度不依赖这些服务。
 
 ## 结构验收
 
@@ -106,9 +95,6 @@ pnpm test:agents
 pnpm test:agent:tasks
 pnpm test:navigation
 pnpm test:chat
-pnpm test:voice:live
-pnpm test:agent:voice
-pnpm test:voice:services
 pnpm test:agent:deepseek
 pnpm test:player:names
 ```
@@ -119,7 +105,6 @@ pnpm test:player:names
 
 `tests/server-boundaries.test.ts` 检查依赖方向、全局持久化边界、循环依赖、配置入口和集成装配，并限定业务模块仅从 Socket 适配文件以 `import type` 引用传输契约。Prisma 运行时与 Pg 适配器的导入统一限制在 `core/database/client.ts`，其他服务端文件只引用 Prisma 类型。生命周期测试检查 HTTP 契约、SSE/ASR/世界连接关闭、失败启动后的再次启动，以及共享数据库客户端的释放顺序和重复关闭。Vitest 使用线程池，避免 Colyseus 的 PM2 遥测占用 fork 的测试 IPC，不模拟服务器本身。
 
-UI 沙箱统一放在 `test/sandbox`。新增 `asr-services-fixture.ts` 提供确定性识别结果与临时配置；仓库没有可迁移的受控 `output/asr-services-fixture.ts`。两个沙箱均通过 `createTestServer` 启动，并处理退出清理。
 
 ## 独立任务计划存档
 
@@ -164,11 +149,11 @@ TEST_DATABASE_URL="$TASK_TEST_DATABASE_URL" pnpm exec vitest run apps/server/tes
 
 当前执行使用即时检查的外键。联合事务先解除需要切换或删除的当前执行引用，保存角色配置、计划、Run 和检查点后再保存角色恢复状态；中间状态不会对外可见。角色的长期记忆仍独立于 Run 检查点。
 
-ASR 显式分配改用 `AsrAssignment`，服务目录与分配在同一事务中保存。缺少显式分配时继续使用现有的默认选择规则；clip 的 Whisper 能力要求仍由服务层校验。迁移直接删除旧 `uses` 列，不回填既有分配或历史角色快照，适用于空库或已重置的开发库。
+ASR 显式分配改用 `AsrAssignment`，服务目录与分配在同一事务中保存。缺少显式分配时继续使用现有的默认选择规则；迁移直接删除旧 `uses` 列，不回填既有分配或历史角色快照，适用于空库或已重置的开发库。
 
 ## HTTP 领域路径
 
-共享模型配置使用 `/providers`，全局计划使用 `/tasks`，运行控制使用 `/task-runs`，TTS 配置和试听使用 `/voice/tts/services`，Piper 模型目录与安装使用 `/voice/tts/piper`。启用鉴权时，这些接口与 `/ai-characters`、`/voice/asr/services` 都需要管理员 Bearer 令牌。Agent 音色绑定继续为 `/ai-characters/:id/voice`；聊天音频继续使用 `/chat` 下的玩家会话鉴权。
+共享模型配置使用 `/providers`，全局计划使用 `/tasks`，运行控制使用 `/task-runs`。启用鉴权时，这些接口与 `/ai-characters` 都需要管理员 Bearer 令牌。
 
 这些路径替换旧的 `/ai-characters/providers`、`/ai-characters/tasks`、`/ai-characters/task-runs`、`/ai-characters/voice-services`；没有旧路径别名。浏览器、CLI 脚本和外部 HTTP 客户端需要同步升级。WebSocket 连接地址仍为 `/ai-characters/gateway`。
 

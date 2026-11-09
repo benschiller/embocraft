@@ -33,10 +33,6 @@ try {
       '当前世界服务尚未加载 AI 玩家支持，请使用最新代码重启世界服务后再运行。',
       true,
     );
-  if (!abort.signal.aborted)
-    await session.request('agent.voice', {
-      enabled: !!config.voiceReplies && aiCharacterPermissions(config).chat,
-    });
   const runtime = createAgentRuntime({
     session,
     selfId: session.room.sessionId,

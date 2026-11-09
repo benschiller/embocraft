@@ -24,8 +24,6 @@ export function characterSettings(
     maxTokens: view.maxTokens,
     permissions: view.permissions,
     skills: view.skills,
-    voiceReplies: view.voiceReplies,
-    voiceServiceId: view.voiceServiceId,
     thinking: view.thinking,
     reasoningEffort: view.reasoningEffort,
   };

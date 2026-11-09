@@ -1,10 +1,5 @@
 import { createDatabaseClient } from '../src/core/database/client';
-import {
-  DEFAULT_ASR_PROVIDER,
-  DEFAULT_CHARACTER,
-  DEFAULT_PROVIDERS,
-  DEFAULT_TTS_PROVIDER,
-} from './seed-data';
+import { DEFAULT_CHARACTER, DEFAULT_PROVIDERS } from './seed-data';
 import type { Prisma } from '@prisma/client';
 
 const connectionString = process.env.DATABASE_URL;
@@ -19,18 +14,6 @@ async function main() {
       update: {},
     });
   }
-
-  await prisma.ttsProvider.upsert({
-    where: { id: DEFAULT_TTS_PROVIDER.id },
-    create: DEFAULT_TTS_PROVIDER,
-    update: {},
-  });
-
-  await prisma.asrProvider.upsert({
-    where: { id: DEFAULT_ASR_PROVIDER.id },
-    create: DEFAULT_ASR_PROVIDER,
-    update: {},
-  });
 
   await prisma.agentCharacter.upsert({
     where: { id: DEFAULT_CHARACTER.id },

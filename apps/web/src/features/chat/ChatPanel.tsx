@@ -84,11 +84,7 @@ export function ChatPanel({
                   ? t('chat.nearby')
                   : t('chat.public')}
             </span>
-            <span>
-              {message.data.kind === 'audio'
-                ? t('chat.audioMessage')
-                : message.data.text}
-            </span>
+            <span>{message.data.text}</span>
           </button>
         ))}
         <button

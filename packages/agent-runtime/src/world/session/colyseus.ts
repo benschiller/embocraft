@@ -33,7 +33,6 @@ export class Session {
   events: WorldEvent[] = [];
   onEvent?: (event: WorldEvent) => void;
   chatToken = '';
-  spatialSignals: unknown[] = [];
   private id = 0;
   private roomOpen = false;
   private closing?: Promise<void>;
@@ -61,10 +60,6 @@ export class Session {
     });
     room.onMessage('chat.auth', (v: { token: string }) => {
       this.chatToken = v.token;
-    });
-    room.onMessage('spatial.signal', (value) => {
-      this.spatialSignals.push(value);
-      if (this.spatialSignals.length > 100) this.spatialSignals.shift();
     });
     room.onMessage('snapshot', (s: Snapshot) => (this.snapshot = s));
     room.onMessage('edit', (e: Edit) => {

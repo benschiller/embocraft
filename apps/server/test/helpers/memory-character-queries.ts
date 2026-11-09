@@ -3,17 +3,14 @@ import { AppError } from '../../src/core/errors/app-error';
 import type { ArchivePort } from '../../src/persistence/management-archive';
 import type { CharacterQueryPort } from '../../src/modules/ai-characters';
 import type { ProviderRepository } from '../../src/modules/providers';
-import type { TtsService } from '../../src/modules/tts';
 
 /** Read the saved test archive, never the manager's live jobs or snapshot cache. */
 export function memoryCharacterQueries(
   archive: ArchivePort,
   providers: ProviderRepository,
-  voices: Pick<TtsService, 'list'>,
 ): CharacterQueryPort {
   const list: CharacterQueryPort['list'] = async () => {
     const saved = await archive.load();
-    const voicesList = await voices.list();
     return (
       await Promise.all(
         (saved?.characters ?? []).map(async (record) => {
@@ -34,10 +31,6 @@ export function memoryCharacterQueries(
           return {
             ...config,
             providerName: (await providers.getRuntime(record.providerId)).name,
-            voiceServiceId: record.voiceServiceId ?? '',
-            voiceServiceName: voicesList.find(
-              (voice) => voice.id === record.voiceServiceId,
-            )?.name,
             task: state?.task,
             taskIdentity: state?.identity ?? null,
             taskExecution: run

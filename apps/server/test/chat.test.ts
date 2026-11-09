@@ -1,5 +1,5 @@
 import { executeAction, type Observation } from '@voxel/agent-runtime';
-import { parseChatRoute, spatialMix, type Player } from '@voxel/shared';
+import { parseChatRoute, type Player } from '@voxel/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { visibleEvent, WorldChat } from '../src/modules/chat';
 
@@ -57,7 +57,7 @@ describe('private chat', () => {
     expect(visibleEvent(e, 'outsider')).toBe(false);
     expect(visibleEvent(event('a', 'public'), 'outsider')).toBe(true);
   });
-  it('validates recipients, rotates session credentials and enforces audio ACL/expiry', () => {
+  it('validates recipients and rotates session credentials', () => {
     const people = [player('a'), player('b'), player('outsider')],
       emit = vi.fn(),
       chat = new WorldChat(() => people, emit);
@@ -75,21 +75,6 @@ describe('private chat', () => {
     expect(emit).not.toHaveBeenCalled();
     chat.send('a', { text: 'secret', scope: 'private', recipients: ['b'] });
     expect(emit.mock.calls[0][1].scope).toBe('private');
-    chat.beginUpload('a', {});
-    expect(() => chat.beginUpload('a', {})).toThrow();
-    chat.endUpload('a');
-    const audio = chat.publishAudio(
-      'a',
-      { scope: 'private', recipients: ['b'] },
-      Buffer.from('audio'),
-      1000,
-      'hello',
-    );
-    expect(chat.audio(audio.audioId!, 'b').toString()).toBe('audio');
-    expect(() => chat.audio(audio.audioId!, 'outsider')).toThrow();
-    const now = Date.now();
-    vi.spyOn(Date, 'now').mockReturnValue(now + 600001);
-    expect(() => chat.audio(audio.audioId!, 'a')).toThrow();
     people[0].connected = false;
     expect(() => chat.authenticate(token)).toThrow();
     chat.clear();
@@ -120,111 +105,7 @@ describe('private chat', () => {
     });
   });
 });
-describe('spatial sound', () => {
-  it('attenuates by distance and speaker facing, mutes beyond 18 blocks', () => {
-    const speaker = player('a'),
-      near = { ...player('b'), z: -1 },
-      far = { ...near, z: -10 };
-    expect(spatialMix(near, speaker).gain).toBe(1);
-    expect(spatialMix(far, speaker).gain).toBeLessThan(1);
-    expect(spatialMix({ ...near, z: -18 }, speaker).gain).toBe(0);
-    expect(spatialMix(near, { ...speaker, yaw: Math.PI }).gain).toBeCloseTo(
-      0.35,
-    );
-  });
-  it('rotates stereo placement with the listener', () => {
-    const listener = player('a'),
-      speaker = { ...player('b'), x: 2 };
-    expect(spatialMix(listener, speaker).pan).toBe(1);
-    expect(spatialMix({ ...listener, yaw: Math.PI }, speaker).pan).toBe(-1);
-    expect(spatialMix(listener, listener).pan).toBe(0);
-  });
-});
-
-describe('nearby speech delivery', () => {
-  const setup = () => {
-    const speaker = { ...player('s'), voiceSending: true },
-      near = { ...player('ai'), kind: 'ai-agent' as const, z: -2 },
-      far = { ...player('far'), kind: 'ai-agent' as const, z: -20 },
-      human = { ...player('h'), z: -2, voiceListening: false };
-    const people = [speaker, near, far, human],
-      emit = vi.fn(),
-      chat = new WorldChat(() => people, emit);
-    return { speaker, near, far, human, people, chat, emit };
-  };
-  it('captures audible listeners at segment start and never broadcasts transcripts', () => {
-    const { chat, emit, human, far } = setup();
-    const id = chat.beginSpatial('s');
-    chat.claimSpatial('s', id);
-    human.voiceListening = true;
-    far.z = -1; // Joined hearing range after capture began.
-    const data = chat.publishSpatial('s', id, '附近说的话');
-    expect(data.recipients).toEqual(['ai']);
-    expect(data.scope).toBe('nearby');
-    const e = { ...event('s', 'nearby'), data };
-    expect(visibleEvent(e, 'ai')).toBe(true);
-    expect(visibleEvent(e, 'far')).toBe(false);
-    expect(visibleEvent(e, 's')).toBe(true);
-    expect(emit).toHaveBeenCalledTimes(1);
-    expect(() => chat.claimSpatial('s', id)).toThrow();
-  });
-  it('authorizes previews without consuming tickets or waking listeners', () => {
-    const { chat, emit } = setup();
-    const id = chat.beginSpatial('s');
-    expect(chat.previewSpatial('s', id).aborted).toBe(false);
-    expect(chat.previewSpatial('s', id).aborted).toBe(false);
-    expect(() => chat.previewSpatial('ai', id)).toThrow();
-    expect(() => chat.publishSpatial('s', id, 'unconfirmed')).toThrow();
-    expect(emit).not.toHaveBeenCalled();
-    chat.claimSpatial('s', id);
-    expect(() => chat.previewSpatial('s', id)).toThrow();
-    chat.publishSpatial('s', id, 'confirmed');
-    expect(emit).toHaveBeenCalledExactlyOnceWith(
-      's',
-      expect.objectContaining({ text: 'confirmed', recipients: ['ai'] }),
-    );
-  });
-  it('uses facing as well as distance and removes departed listeners before delivery', () => {
-    const { chat, near, speaker } = setup();
-    near.z = -14;
-    const front = chat.beginSpatial('s');
-    chat.claimSpatial('s', front);
-    expect(chat.publishSpatial('s', front, 'front').recipients).toEqual(['ai']);
-    speaker.yaw = Math.PI;
-    const back = chat.beginSpatial('s');
-    chat.claimSpatial('s', back);
-    expect(chat.publishSpatial('s', back, 'back').recipients).toEqual([]);
-    near.z = -2;
-    const left = chat.beginSpatial('s');
-    chat.claimSpatial('s', left);
-    near.z = -30;
-    expect(chat.publishSpatial('s', left, 'left').recipients).toEqual([]);
-  });
-  it('cancels inference on mute and invalidates old chunks even after reopening mic', () => {
-    const { chat, speaker, emit } = setup();
-    const id = chat.beginSpatial('s'),
-      signal = chat.claimSpatial('s', id);
-    speaker.voiceSending = false;
-    chat.cancelSpatial('s');
-    expect(signal.aborted).toBe(true);
-    speaker.voiceSending = true;
-    expect(() => chat.publishSpatial('s', id, 'late')).toThrow();
-    expect(emit).not.toHaveBeenCalled();
-  });
-  it('requires an active human mic, rejects forged/replayed tickets and bounds pending work', () => {
-    const { chat, speaker } = setup();
-    speaker.voiceSending = false;
-    expect(() => chat.beginSpatial('s')).toThrow();
-    expect(() => chat.beginSpatial('ai')).toThrow();
-    speaker.voiceSending = true;
-    const id = chat.beginSpatial('s');
-    expect(() => chat.claimSpatial('ai', id)).toThrow();
-    chat.claimSpatial('s', id);
-    expect(() => chat.claimSpatial('s', id)).toThrow();
-    for (let i = 0; i < 3; i++) chat.beginSpatial('s');
-    expect(() => chat.beginSpatial('s')).toThrow();
-    chat.clear();
-  });
+describe('nearby replies', () => {
   it('keeps nearby replies scoped to their sender', async () => {
     const observation: Observation = {
       id: 'x',

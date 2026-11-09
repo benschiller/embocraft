@@ -4,15 +4,12 @@ import { join } from 'node:path';
 import { createDatabaseClient } from '../../src/core/database/client';
 import { createServer } from '../../src/server';
 import type { AICharacterDependencies } from '../../src/modules/ai-characters';
-import type { AsrBridge, LocalSpeech } from '../../src/modules/asr';
 
 export type TestServerOptions = {
   directory?: string;
   port?: number;
   origin?: string;
   agentDependencies?: AICharacterDependencies;
-  asrBridge?: AsrBridge;
-  speech?: LocalSpeech;
   [key: string]: unknown;
 };
 

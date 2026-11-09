@@ -5,7 +5,6 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { installReactMount } from '../../../../test/helpers/react-mount';
 import { Connection } from '../../../network/connection';
 import { i18n } from '../../../i18n';
-import { chooseAsrService } from '../../voice/asr-selection';
 import {
   useChatController,
   type ChatController,
@@ -71,7 +70,7 @@ it('opens secondary actions, returns focus on Escape, and keeps recipient select
   );
 });
 
-it('does not send during IME composition, recording or disconnection; private chat requires recipients', async () => {
+it('does not send during IME composition, an in-flight send or disconnection; private chat requires recipients', async () => {
   const send = vi
     .spyOn(connection, 'requestAction')
     .mockResolvedValue({ ok: true } as never);
@@ -90,7 +89,7 @@ it('does not send during IME composition, recording or disconnection; private ch
   expect(button('发送消息').disabled).toBe(true);
   await act(async () => {
     controller.setScope('public');
-    controller.setMode('recording');
+    controller.setMode('sending');
   });
   await act(async () =>
     mount.host
@@ -120,105 +119,6 @@ it('does not send during IME composition, recording or disconnection; private ch
   expect(controller.status).toBe('');
 });
 
-it('stops dictation for review and cancels recording without sending', async () => {
-  chooseAsrService('chat', {
-    id: 'test-asr',
-    name: 'Test ASR',
-    provider: 'whisper',
-  });
-  await mount.render(<Harness />);
-  vi.spyOn(controller.dictation, 'start').mockImplementation(
-    async (_language, events) => {
-      events.onState('listening', '');
-    },
-  );
-  const finish = vi.spyOn(controller.dictation, 'finish').mockResolvedValue();
-  const cancel = vi.spyOn(controller.recorder, 'cancel');
-  await act(async () => {
-    controller.setText('原有草稿');
-  });
-  await act(async () => controller.record('text'));
-  expect(mount.host.textContent).toContain('正在听写…');
-  expect(button('结束听写并发送').disabled).toBe(false);
-  await click('结束录音');
-  expect(finish).toHaveBeenCalledOnce();
-  expect(controller.mode).toBe('transcribing');
-  await click('取消');
-  expect(cancel).toHaveBeenCalledOnce();
-  expect(controller.text).toBe('原有草稿');
-  expect(controller.partial).toBe('');
-  expect(document.activeElement?.getAttribute('aria-label')).toBe('聊天消息');
-});
-
-it('aborts uploads without dropping the draft and directly discards playing audio while preserving chat context', async () => {
-  const revoke = vi.fn();
-  const send = vi.spyOn(connection, 'requestAction');
-  vi.stubGlobal(
-    'URL',
-    class extends URL {
-      static createObjectURL() {
-        return 'blob:test-clip';
-      }
-      static revokeObjectURL = revoke;
-    },
-  );
-  await mount.render(<Harness />);
-  const clip = new Blob(['audio']);
-  const recipient = {
-    id: 'a',
-    name: 'Alice',
-    kind: 'human',
-    connected: true,
-  } as Player;
-  await act(async () => {
-    controller.setText('保留文字草稿');
-    controller.setScope('private');
-    controller.setRecipients([recipient]);
-    controller.setClip(clip);
-  });
-  expect(button('试听录音').disabled).toBe(false);
-  expect(button('发送语音').disabled).toBe(false);
-  expect(button('丢弃录音').title).toBe('丢弃录音');
-  expect(mount.host.querySelector('[aria-label="更多聊天操作"]')).toBeNull();
-  const abort = new AbortController();
-  controller.upload.current = abort;
-  await act(async () => {
-    controller.setMode('sending');
-    controller.setStatus('正在上传语音并由服务器转写…');
-  });
-  expect(mount.host.querySelector('[aria-label="试听录音"]')).toBeNull();
-  expect(mount.host.querySelector('form [role="status"]')?.textContent).toBe(
-    '正在发送语音…',
-  );
-  expect(mount.host.querySelector('.chat-help')).toBeNull();
-  expect(button('发送语音').disabled).toBe(true);
-  await click('取消发送');
-  expect(abort.signal.aborted).toBe(true);
-  expect(controller.clip).toBe(clip);
-  expect(mount.host.querySelector('[aria-label="丢弃录音"]')).toBeNull();
-  await act(async () => controller.setMode('idle'));
-  const audio = mount.host.querySelector('audio')!;
-  await click('试听录音');
-  expect(audio.play).toHaveBeenCalledOnce();
-  await act(async () => audio.dispatchEvent(new Event('play')));
-  expect(button('暂停试听')).toBeDefined();
-  vi.mocked(audio.pause).mockClear();
-  await click('丢弃录音');
-  expect(audio.pause).toHaveBeenCalledOnce();
-  expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:test-clip');
-  expect(mount.host.querySelector('audio')).toBeNull();
-  expect(controller.clip).toBeUndefined();
-  expect(controller.preview).toBe('');
-  expect(controller.text).toBe('保留文字草稿');
-  expect(controller.scope).toBe('private');
-  expect(controller.recipients).toEqual([recipient]);
-  expect(controller.status).toBe('');
-  expect(controller.error).toBe('');
-  expect(button('更多聊天操作')).toBeDefined();
-  expect(send).not.toHaveBeenCalled();
-  expect(document.activeElement?.getAttribute('aria-label')).toBe('聊天消息');
-});
-
 it('closes the floating actions on an outside click, focus exit, and trigger toggle', async () => {
   await mount.render(<Harness />);
   await click('更多聊天操作');
@@ -242,26 +142,6 @@ it('closes the floating actions on an outside click, focus exit, and trigger tog
   await click('更多聊天操作');
   await click('更多聊天操作');
   expect(document.querySelector('.chat-more-actions')).toBeNull();
-});
-
-it('starts voice recording from the floating action without leaking the click to the game', async () => {
-  chooseAsrService('clip', {
-    id: 'test-asr',
-    name: 'Test ASR',
-    provider: 'whisper',
-  });
-  await mount.render(<Harness />);
-  const start = vi
-    .spyOn(controller.recorder, 'start')
-    .mockImplementation(async (_done, _fail, ready) => ready());
-  await click('更多聊天操作');
-  clicked.mockClear();
-  await click('发语音');
-  expect(start).toHaveBeenCalledOnce();
-  expect(controller.mode).toBe('recording');
-  expect(document.querySelector('.chat-more-actions')).toBeNull();
-  expect(clicked).not.toHaveBeenCalled();
-  expect(button('结束录音并发送语音').disabled).toBe(false);
 });
 
 const typeMessage = async (value: string) =>
@@ -340,16 +220,19 @@ it('dismisses the recipient popup on outside focus without stealing focus back',
   await click('更多聊天操作');
   await click('选人');
   expect(document.activeElement).toBe(controller.search.current);
-  const outside = button('语音转文字');
+  const outside = document.createElement('button');
+  outside.textContent = 'outside';
+  document.body.append(outside);
   await act(async () => outside.focus());
   expect(controller.picker).toBeNull();
   expect(document.activeElement).toBe(outside);
+  outside.remove();
 });
 
 it('shows an error beside the input without taking focus, and keeps it reachable after dismissal', async () => {
   await mount.render(<Harness />);
   await typeMessage('保留我的草稿');
-  await act(async () => controller.setMode('transcribing'));
+  await act(async () => controller.setMode('sending'));
   await act(async () => {
     controller.setMode('idle');
     controller.setError('连接失败，文字已保留，请重试。');
@@ -375,49 +258,5 @@ it('shows an error beside the input without taking focus, and keeps it reachable
   expect(button('发送消息').disabled).toBe(false);
   expect(controller.text).toBe('保留我的草稿');
   await act(async () => controller.setError(''));
-  expect(document.querySelector('.chat-input-notice')).toBeNull();
-});
-
-it('keeps overflowing text in an expandable notice and restores it without replacing a draft or losing the remainder', async () => {
-  await mount.render(<Harness />);
-  await act(async () => {
-    controller.setText('已有草稿');
-    controller.setOverflow('文'.repeat(250));
-  });
-  expect(mount.host.querySelector('textarea')).toBeNull();
-  await click('保留的文字');
-  expect(document.querySelector('textarea')?.value).toBe('文'.repeat(250));
-  expect(button('填入空白输入框').disabled).toBe(true);
-  await act(async () => controller.setText(''));
-  await click('填入空白输入框');
-  expect(controller.text).toBe('文'.repeat(240));
-  expect(controller.overflow).toBe('文'.repeat(10));
-  expect(document.activeElement?.getAttribute('aria-label')).toBe('聊天消息');
-  await act(async () => controller.setText(''));
-  await click('保留的文字');
-  await click('填入空白输入框');
-  expect(controller.text).toBe('文'.repeat(10));
-  expect(controller.overflow).toBe('');
-});
-
-it('routes draft playback failures to the input notice and clears them on retry', async () => {
-  vi.stubGlobal(
-    'URL',
-    class extends URL {
-      static createObjectURL() {
-        return 'blob:broken';
-      }
-      static revokeObjectURL() {}
-    },
-  );
-  await mount.render(<Harness />);
-  await act(async () => controller.setClip(new Blob(['audio'])));
-  await act(async () =>
-    mount.host.querySelector('audio')!.dispatchEvent(new Event('error')),
-  );
-  expect(document.querySelector('.chat-input-notice')).not.toBeNull();
-  expect(mount.host.querySelector('.voice-draft .chat-error')).toBeNull();
-  expect(button('丢弃录音').disabled).toBe(false);
-  await click('试听录音');
   expect(document.querySelector('.chat-input-notice')).toBeNull();
 });

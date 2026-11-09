@@ -49,12 +49,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe('explicit game exit', () => {
-  it('leaves consentfully, clears identity, stops spatial input, and allows a fresh entry', async () => {
+  it('leaves consentfully, clears identity, and allows a fresh entry', async () => {
     const first = roomMock();
     sdk.joinById.mockResolvedValue(first);
     const connection = new Connection();
-    const stopSpatial = vi.fn();
-    connection.stopSpatialInput = stopSpatial;
     sessionStorage.setItem('voxel-name', 'Explorer');
     await connection.connect('Explorer');
     connection.leave();
@@ -63,12 +61,10 @@ describe('explicit game exit', () => {
     expect(connection.room).toBeUndefined();
     expect(sessionStorage.getItem('voxel-name')).toBeNull();
     expect(sessionStorage.getItem('voxel-reconnect')).toBeNull();
-    expect(stopSpatial).toHaveBeenCalledTimes(1);
     first.fireLeave();
     await vi.runAllTimersAsync();
     expect(connection.status).toBe('lobby');
     expect(sdk.joinById).toHaveBeenCalledTimes(1);
-    expect(stopSpatial).toHaveBeenCalledTimes(1);
     const second = roomMock();
     sdk.joinById.mockResolvedValue(second);
     vi.mocked(fetch).mockResolvedValue(

@@ -3,7 +3,6 @@ import type { ProviderRuntimePort, SavedProvider } from '../../providers';
 import { markOffline } from '../../tasks';
 import { appendAICharacterLog } from '../domain/activity-log';
 import { executionState } from '../integrations/task-execution-adapter';
-import type { CharacterVoiceCoordinator } from '../integrations/voice-coordinator';
 import { AICharacterHost } from './character-host';
 import {
   canWakeJob,
@@ -21,7 +20,6 @@ type RuntimeContext = {
   providers: ProviderRuntimePort;
   serverUrl: string | (() => string);
   dependencies: ExecutionContext['dependencies'];
-  voice: CharacterVoiceCoordinator;
   closing: () => boolean;
   controlMessage: ExecutionContext['controlMessage'];
   save: () => Promise<void>;
@@ -128,9 +126,7 @@ export class CharacterExecutionService {
           ? this.context.serverUrl
           : this.context.serverUrl(),
       dependencies: this.context.dependencies,
-      unbindVoice: (sessionId) => this.context.voice.unbindVoice(sessionId),
       closing: () => this.context.closing(),
-      bindVoice: (j) => this.context.voice.bindVoice(j),
       controlMessage: (targetId, op, identity, commandId, message) =>
         this.context.controlMessage(targetId, op, identity, commandId, message),
       wake: (j) => this.wake(j),

@@ -2,7 +2,7 @@
 
 > **Floperati fork.** Branch `floperati` is pinned to upstream [`lulabs-org/embocraft`](https://github.com/lulabs-org/embocraft) (formerly `agent-voxel-world`) at
 > `96ea050c00eb412fb927a4d574e3b6453b623864` (2026-11-08, "refactor(server): organize AI character module layers (#224)").
-> Upstream is merged only by decision. Fork changes: voice stack removed (no Whisper/Piper/speech container) and an append-only block edit history.
+> Upstream is merged only by decision. Fork changes: voice stack removed (speech recognition, speech synthesis, spatial audio and the speech container) and an append-only block edit history.
 > Toolchain: Node 22, pnpm 10.6.2 (`corepack`). Local check that mirrors upstream CI: `scripts/floperati/check.sh`.
 
 English | [简体中文](README_CN.md)
@@ -17,7 +17,6 @@ A standalone, local multiplayer 3D voxel and embodied AI sandbox: TypeScript · 
 ## Key Features
 
 - 🤖 **LLM-Powered AI Players**: Integrates large language models such as DeepSeek, featuring autonomous observation, spatial navigation, multi-step reasoning & planning, and voxel editing capabilities.
-- 🎙️ **Proximity Spatial Audio & Live Transcription**: Built-in Whisper ASR speech recognition and Piper offline TTS speech synthesis, with distance- and orientation-based 3D attenuation mixing, automatically broadcasting transcribed subtitles to nearby players and agents upon sentence completion.
 - 🧱 **Authoritative Multiplayer World**: Three.js instanced voxel rendering, powered by a Node.js / Colyseus server that authoritatively validates movement physics, velocity, raycast collisions, gravity, and voxel adjacency support rules.
 - 🔌 **Agent Gateway Central Management**: Dedicated HTTP/WebSocket endpoints for unified AI character lifecycle management, task plan queues, status acknowledgments, and token budget protection.
 
@@ -60,7 +59,7 @@ Once started, open http://127.0.0.1:5173 in your browser. You can open two separ
 
 ### 2. One-Click Full-Stack Docker Deployment
 
-This project provides out-of-the-box Docker Compose orchestration covering the Web frontend, Node backend, PostgreSQL database, and an integrated Speaches voice container (Whisper ASR + Piper TTS):
+This project provides out-of-the-box Docker Compose orchestration covering the Web frontend, Node backend, and PostgreSQL database:
 
 ```sh
 # Start all services with one command
@@ -89,7 +88,6 @@ After launch:
 | **Jump**            | `Space`                                                              | Vertical jump (can climb 1-block steps)                                       |
 | **Voxel Editing**   | Crosshair within 6 blocks: Left Click to break, Right Click to place | Bottom hotbar supports quick placement / removal and material selection       |
 | **Text Chat**       | Bottom-left chat input                                               | Supports global broadcast chat and `@nickname` private messages               |
-| **Proximity Voice** | Voice control panel                                                  | Microphone voice transmission, 3D spatial audio listening, and speech-to-text |
 
 ---
 
@@ -120,11 +118,10 @@ For in-depth architectural layering, module dependency contracts, and design bou
 | **Getting Started**     | [Getting Started](docs/guide/getting-started.md)               | Setup, local development, Docker deployment, and troubleshooting             |
 | **System Architecture** | [Architecture & Code Organization](docs/guide/architecture.md) | Frontend/backend modules, lifecycles, constraints, and design boundaries     |
 | **Protocols**           | [Protocols & Extension Boundaries](docs/protocol/overview.md)  | Authoritative world state sync, input validation, and extension rules        |
-|                         | [Chat & Proximity Voice](docs/protocol/chat.md)                | Spatial audio WebRTC signaling, microphone transcription, and broadcast flow |
+|                         | [Text Chat](docs/protocol/chat.md)                             | Public and private text chat over the world room                             |
 | **AI Agent**            | [AI Player Integration](docs/agent/players.md)                 | DeepSeek model integration, reasoning toolchain, and task loop               |
 |                         | [Agent Gateway](docs/agent/gateway.md)                         | Admin tokens, HTTP control endpoints, and WebSocket state subscription       |
 |                         | [Unified Event Runtime](docs/agent/runtime.md)                 | Task executor, checkpoint persistence, and token budget protection           |
-| **Voice Services**      | [Voice Service Management](docs/voice/setup.md)                | Whisper ASR and Piper TTS model installation and configuration               |
 | **Changelog**           | [Validation Records](docs/changelog/validation.md)             | Dual-browser regression, network recovery, and acceptance tests              |
 |                         | [Pi Migration](docs/changelog/pi-migration.md)                 | Evolution records for Agent runtime architecture                             |
 

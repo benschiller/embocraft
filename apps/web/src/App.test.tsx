@@ -23,10 +23,6 @@ vi.mock('./load-console', () => ({
     }),
 }));
 vi.mock('./features/chat', () => ({ ChatPanel: () => null }));
-vi.mock('./features/voice', () => ({
-  SpatialVoicePanel: () => null,
-  useAsrSelectionSync: () => {},
-}));
 vi.mock('./features/world', async () => ({
   LobbyCard: (await import('./features/world/LobbyCard')).LobbyCard,
   WorldPanel: () => null,

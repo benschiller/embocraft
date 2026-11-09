@@ -8,9 +8,6 @@ export class Avatar extends Schema {
   z = 0;
   yaw = 0;
   connected = true;
-  voiceSending = false;
-  voiceListening = false;
-  voiceReplies = false;
 }
 defineTypes(Avatar, {
   id: 'string',
@@ -21,9 +18,6 @@ defineTypes(Avatar, {
   z: 'number',
   yaw: 'number',
   connected: 'boolean',
-  voiceSending: 'boolean',
-  voiceListening: 'boolean',
-  voiceReplies: 'boolean',
 });
 export class WorldState extends Schema {
   players = new MapSchema<Avatar>();

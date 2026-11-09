@@ -37,7 +37,7 @@ export default withMermaid(
           collapsed: false,
           items: [
             { text: '协议与扩展边界', link: '/protocol/overview' },
-            { text: '聊天与附近语音', link: '/protocol/chat' },
+            { text: '文字聊天', link: '/protocol/chat' },
           ],
         },
         {
@@ -47,14 +47,6 @@ export default withMermaid(
             { text: '接入 AI 玩家', link: '/agent/players' },
             { text: '管理接口 (Gateway)', link: '/agent/gateway' },
             { text: '统一事件运行时', link: '/agent/runtime' },
-          ],
-        },
-        {
-          text: '语音',
-          collapsed: false,
-          items: [
-            { text: '语音服务管理', link: '/voice/setup' },
-            { text: 'Speaches 语音服务', link: '/voice/speaches-service' },
           ],
         },
         {

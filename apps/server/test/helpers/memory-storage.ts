@@ -5,19 +5,6 @@ import {
 } from '../../src/modules/providers/domain/model';
 import { validateProvider } from '../../src/modules/providers/domain/validation';
 import type { ProviderRepository } from '../../src/modules/providers';
-
-import {
-  AsrService,
-  type SavedService,
-} from '../../src/modules/asr/services/asr.service';
-import {
-  validateVoiceService,
-  type SavedVoice,
-} from '../../src/modules/tts/domain/voice-service-validation';
-import type {
-  VoiceServicePersistence,
-  VoiceServiceTransaction,
-} from '../../src/modules/tts/ports';
 import type {
   ArchivePort,
   ManagementArchive,
@@ -47,55 +34,6 @@ export class MemoryPersistence<T> {
     return operation;
   }
 }
-export class MemoryVoicePersistence
-  extends MemoryPersistence<SavedVoice[]>
-  implements VoiceServicePersistence
-{
-  private transactions: Promise<unknown> = Promise.resolve();
-  async get(id: string) {
-    return (await this.load()).find((value) => value.id === id);
-  }
-  transaction<T>(run: (tx: VoiceServiceTransaction) => Promise<T>): Promise<T> {
-    const operation = this.transactions.then(async () => {
-      const values = await this.load();
-      const tx: VoiceServiceTransaction = {
-        get: async (id) => values.find((value) => value.id === id),
-        count: async () => values.length,
-        create: async (value) => {
-          values.push(value);
-        },
-        update: async (value) => {
-          values[values.findIndex((item) => item.id === value.id)] = value;
-        },
-        remove: async (id) => {
-          values.splice(
-            values.findIndex((item) => item.id === id),
-            1,
-          );
-        },
-      };
-      const result = await run(tx);
-      await this.save(values);
-      return result;
-    });
-    this.transactions = operation.catch(() => {});
-    return operation;
-  }
-}
-export const voicePersistence = () =>
-  new MemoryVoicePersistence([
-    {
-      ...validateVoiceService({
-        name: 'Speaches 语音服务',
-        type: 'speaches',
-        voice: '',
-        speed: 1,
-      }),
-      id: 'local-default',
-    },
-  ]);
-export const asrPersistence = () => new MemoryPersistence<SavedService[]>([]);
-
 /** Serialized in memory so restart, corrupt data and failed commits remain testable. */
 export class MemoryArchive implements ArchivePort {
   json?: string;
@@ -189,13 +127,6 @@ export class MemoryProviderRepository implements ProviderRepository {
       await this.persist(next);
       this.values = next;
     });
-  }
-}
-
-/** Test stores expose their backing state so a new instance can simulate restart. */
-export class TestAsrService extends AsrService {
-  constructor(readonly persistence = asrPersistence()) {
-    super(persistence);
   }
 }
 

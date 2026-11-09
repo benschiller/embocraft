@@ -36,12 +36,6 @@ describe('server assembly and lifecycle', () => {
       { WEB_ORIGIN: 'https://example.test/path' },
     ])
       expect(() => env.readServer(testEnv)).toThrow();
-    expect(
-      env.readSpeech({ SPEECH_API_URL: 'http://speech:8000/v1/' }).speechApiUrl,
-    ).toBe('http://speech:8000/v1');
-    expect(env.speechEndpoint({ SPEECH_API_URL: '  ' })).toBe(
-      'http://127.0.0.1:8000/v1',
-    );
   });
 
   it('preserves HTTP contracts and closes SSE, Gateway and world clients idempotently', async () => {
@@ -59,15 +53,10 @@ describe('server assembly and lifecycle', () => {
       expect(await (await fetch(server.httpUrl + '/world')).json()).toEqual({
         roomId: server.world.roomId,
       });
-      for (const path of [
-        '/ai-characters',
-        '/providers',
-        '/voice/asr/services',
-        '/chat/audio/missing',
-      ])
-        expect((await fetch(server.httpUrl + path)).status, path).toBe(
-          path.startsWith('/chat/') ? 403 : 401,
-        );
+      for (const path of ['/ai-characters', '/providers', '/tasks'])
+        expect((await fetch(server.httpUrl + path)).status, path).toBe(401);
+      for (const path of ['/voice/asr/services', '/chat/audio/missing'])
+        expect((await fetch(server.httpUrl + path)).status, path).toBe(404);
       const rejected = await fetch(server.httpUrl + '/ai-characters', {
         headers: { Origin: 'https://foreign.example' },
       });

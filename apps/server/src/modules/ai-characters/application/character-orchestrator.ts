@@ -3,7 +3,6 @@ import {
   type AgentConfig,
   type RuntimeModelOptions,
 } from '@voxel/agent-runtime';
-import type { AICharacterSettings } from '@voxel/shared';
 import type { ManagementPersistence } from '../../../application/management-commit';
 import { createManagementPersistence } from '../../../application/management-persistence';
 import { AppError } from '../../../core/errors/app-error';
@@ -18,10 +17,8 @@ import {
   type SavedProvider,
 } from '../../providers';
 import { bindTaskService, TaskCoordinator, TaskSnapshots } from '../../tasks';
-import { appendAICharacterLog } from '../domain/activity-log';
 import { validateAICharacter } from '../domain/character-settings';
 import { executionState } from '../integrations/task-execution-adapter';
-import { CharacterVoiceCoordinator } from '../integrations/voice-coordinator';
 import { CharacterSnapshots } from '../persistence/character-snapshots';
 import type { AICharacterRoutePort } from '../ports';
 import { CharacterExecutionService } from '../runtime/character-execution';
@@ -56,7 +53,6 @@ export class AICharacterOrchestrator {
     TaskSnapshots
   >;
   readonly tasks: TaskCoordinator;
-  readonly voiceCoordinator = new CharacterVoiceCoordinator();
   private readonly execution: CharacterExecutionService;
   private readonly management: CharacterManagementService;
 
@@ -78,7 +74,6 @@ export class AICharacterOrchestrator {
       providers: this.providers,
       serverUrl: this.serverUrl,
       dependencies: this.dependencies,
-      voice: this.voiceCoordinator,
       closing: () => this.closing,
       controlMessage: (...args) => this.tasks.controlMessage(...args),
       save: () => this.save(),
@@ -104,16 +99,6 @@ export class AICharacterOrchestrator {
       publishCommitted: (snapshot, views) =>
         this.events.commit(views, snapshot),
     });
-    const releaseVoiceGuard = domainEvents.on(
-      'tts.service.removing',
-      ({ serviceId }) => {
-        if (this.hasVoiceServiceReference(serviceId))
-          throw new AppError(
-            '有 Agent 正在引用此服务或保存参数，请先完成更新，并在编辑参数中更换或移除语音服务。',
-            409,
-          );
-      },
-    );
     const releaseProviderGuard = domainEvents.on(
       'provider.removing',
       ({ providerId }) => {
@@ -146,12 +131,10 @@ export class AICharacterOrchestrator {
           this.execution.withStoppedExecution(id, change),
         validateExecution: async (id, overrides) => {
           const job = this.execution.taskJob(id);
-          const settings = validateAICharacter(
+          return validateAICharacter(
             { ...job.view, ...overrides },
             await this.providers.getRuntime(job.view.providerId),
           );
-          await this.checkVoice(settings);
-          return settings;
         },
         storageFailed: () => this.persistence.tasks.storageFailed,
         committedName: (id) =>
@@ -169,7 +152,6 @@ export class AICharacterOrchestrator {
     this.management = new CharacterManagementService({
       jobs: this.jobs,
       providers: this.providers,
-      voice: this.voiceCoordinator,
       scheduler: this.taskScheduler,
       execution: this.execution,
       closing: () => this.closing,
@@ -184,7 +166,6 @@ export class AICharacterOrchestrator {
     const releaseTaskBinding = bindTaskService(this.tasks);
     const releaseSyncEvents = bindConsoleSyncEvents(this.events);
     this.releaseBindings = () => {
-      releaseVoiceGuard();
       releaseProviderGuard();
       releaseProviderChanged();
       releaseCharacterBinding();
@@ -255,14 +236,12 @@ export class AICharacterOrchestrator {
     this.persistence.tasks.restore(this.plans, saved);
     const autoJoin: Job[] = [];
     for (const view of saved.characters) {
-      const { job, voiceWarning, shouldAutoJoin } = await restoreAICharacterJob(
+      const { job, shouldAutoJoin } = await restoreAICharacterJob(
         view,
         this.providers,
-        (settings) => this.checkVoice(settings),
         this.plans,
       );
       this.jobs.set(view.id, job);
-      if (voiceWarning) appendAICharacterLog(job.view, voiceWarning);
       if (shouldAutoJoin) autoJoin.push(job);
     }
     await this.save();
@@ -288,10 +267,6 @@ export class AICharacterOrchestrator {
 
   taskIdentity(id: string) {
     return this.jobs.get(id)?.runtime.view().identity;
-  }
-
-  private checkVoice(settings: AICharacterSettings) {
-    return this.voiceCoordinator.checkVoice(settings);
   }
 
   list() {
@@ -345,10 +320,6 @@ export class AICharacterOrchestrator {
     return this.management.update(id, value);
   }
 
-  setVoice(id: string, value: unknown) {
-    return this.management.setVoice(id, value);
-  }
-
   remove(id: string) {
     return this.management.remove(id);
   }
@@ -360,12 +331,6 @@ export class AICharacterOrchestrator {
 
   hasProviderReference(id: string) {
     return [...this.jobs.values()].some((job) => job.view.providerId === id);
-  }
-
-  hasVoiceServiceReference(id: string) {
-    return [...this.jobs.values()].some(
-      (j) => j.updating || j.view.voiceServiceId === id,
-    );
   }
 
   close(): Promise<void> {

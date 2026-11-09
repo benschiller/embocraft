@@ -106,8 +106,6 @@ const agentProfileProperties = {
     ),
   },
   skills: { type: 'array', items: text },
-  voiceReplies: { type: 'boolean' },
-  voiceServiceId: text,
   intervalMode: { ...text, enum: ['fixed', 'random'] },
   intervalMs: { ...integer, minimum: 1000, maximum: 60000 },
   intervalMinMs: { ...integer, minimum: 1000, maximum: 60000 },
