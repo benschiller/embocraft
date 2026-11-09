@@ -18,6 +18,7 @@ export class ViewerScene {
   private avatars = new Map<string, VoxelAvatar>();
   private raf = 0;
   private last = 0;
+  private keys = new Set<string>();
 
   constructor(
     private host: HTMLDivElement,
@@ -47,12 +48,17 @@ export class ViewerScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 2, 0);
     this.controls.enableDamping = true;
+    this.controls.enablePan = true;
+    this.controls.screenSpacePanning = false; // right-drag pans along the ground
     this.controls.maxPolarAngle = Math.PI * 0.48;
     this.controls.minDistance = 4;
     this.controls.maxDistance = LIMIT * 5;
     this.controls.update();
     this.resize();
     window.addEventListener('resize', this.resize);
+    window.addEventListener('keydown', this.keydown);
+    window.addEventListener('keyup', this.keyup);
+    window.addEventListener('blur', this.clearKeys);
     this.rebuild();
     this.raf = requestAnimationFrame(this.frame);
   }
@@ -71,9 +77,66 @@ export class ViewerScene {
     this.camera.updateProjectionMatrix();
   };
 
+  private static MOVE_KEYS = new Set([
+    'KeyW',
+    'KeyA',
+    'KeyS',
+    'KeyD',
+    'KeyQ',
+    'KeyE',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'ShiftLeft',
+    'ShiftRight',
+  ]);
+  private keydown = (event: KeyboardEvent) => {
+    if (!ViewerScene.MOVE_KEYS.has(event.code)) return;
+    event.preventDefault();
+    this.keys.add(event.code);
+  };
+  private keyup = (event: KeyboardEvent) => {
+    this.keys.delete(event.code);
+  };
+  private clearKeys = () => this.keys.clear();
+
+  /** Fly the camera and its orbit target together, relative to the view direction. */
+  private move(dt: number) {
+    const k = this.keys;
+    const forward =
+      Number(k.has('KeyW') || k.has('ArrowUp')) -
+      Number(k.has('KeyS') || k.has('ArrowDown'));
+    const strafe =
+      Number(k.has('KeyD') || k.has('ArrowRight')) -
+      Number(k.has('KeyA') || k.has('ArrowLeft'));
+    const lift = Number(k.has('KeyE')) - Number(k.has('KeyQ'));
+    if (!forward && !strafe && !lift) return;
+    const speed = (k.has('ShiftLeft') || k.has('ShiftRight') ? 40 : 15) * dt;
+    const ahead = new THREE.Vector3()
+      .subVectors(this.controls.target, this.camera.position)
+      .setY(0);
+    if (ahead.lengthSq() < 1e-6) ahead.set(0, 0, -1);
+    ahead.normalize();
+    const right = new THREE.Vector3().crossVectors(ahead, this.camera.up);
+    const step = new THREE.Vector3()
+      .addScaledVector(ahead, forward * speed)
+      .addScaledVector(right, strafe * speed);
+    step.y = lift * speed;
+    const bound = LIMIT * 1.5;
+    const next = this.controls.target.clone().add(step);
+    next.x = THREE.MathUtils.clamp(next.x, -bound, bound);
+    next.z = THREE.MathUtils.clamp(next.z, -bound, bound);
+    next.y = THREE.MathUtils.clamp(next.y, 0, LIMIT * 2);
+    const applied = next.sub(this.controls.target);
+    this.controls.target.add(applied);
+    this.camera.position.add(applied);
+  }
+
   private frame = (now: number) => {
     const dt = this.last ? Math.min((now - this.last) / 1000, 0.1) : 0;
     this.last = now;
+    this.move(dt);
     const ids = new Set(this.feed.players.map((p) => p.id));
     for (const [id, avatar] of this.avatars)
       if (!ids.has(id)) {
@@ -115,6 +178,9 @@ export class ViewerScene {
   dispose() {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.resize);
+    window.removeEventListener('keydown', this.keydown);
+    window.removeEventListener('keyup', this.keyup);
+    window.removeEventListener('blur', this.clearKeys);
     this.controls.dispose();
     disposeBlockMeshes(this.scene, this.meshes);
     for (const avatar of this.avatars.values()) avatar.dispose();

@@ -51,6 +51,24 @@ export function Watch() {
         Watching · read-only · {status.players} in world · rev {status.revision}{' '}
         · {status.state}
       </div>
+      <div
+        aria-label="Viewer controls"
+        style={{
+          position: 'absolute',
+          bottom: 16,
+          left: 16,
+          padding: '8px 12px',
+          borderRadius: 8,
+          background: 'rgba(255,255,255,0.85)',
+          font: '500 12px/1.6 system-ui, sans-serif',
+          color: '#24342b',
+        }}
+      >
+        <b>Move</b> W A S D / arrows · <b>Up/down</b> E / Q · <b>Faster</b>{' '}
+        Shift
+        <br />
+        <b>Rotate</b> drag · <b>Pan</b> right-drag · <b>Zoom</b> scroll
+      </div>
     </main>
   );
 }
