@@ -29,7 +29,8 @@ function getInitialLanguage(): Language {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (saved && isLanguage(saved)) return saved;
   }
-  return 'zh';
+  // Floperati: English by default; a saved choice still wins.
+  return 'en';
 }
 
 function applyDocumentLanguage(language: string) {

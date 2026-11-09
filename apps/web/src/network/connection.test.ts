@@ -1,5 +1,19 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  beforeAll,
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { Connection } from './connection';
+
+// These assertions cover the Chinese copy; English is the app default (Floperati).
+beforeAll(async () => {
+  const { i18n } = await import('../i18n');
+  await i18n.changeLanguage('zh');
+});
 const sdk = vi.hoisted(() => ({ reconnect: vi.fn(), joinById: vi.fn() }));
 vi.mock('colyseus.js', () => ({
   Client: class {

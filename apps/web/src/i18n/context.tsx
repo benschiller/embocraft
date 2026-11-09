@@ -10,7 +10,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 export function useI18n(): I18nContextType {
   const { t, i18n } = useReactI18nextTranslation();
-  const currentLang = i18n.language?.startsWith('en') ? 'en' : 'zh';
+  const currentLang = i18n.language?.startsWith('zh') ? 'zh' : 'en';
 
   const setLanguage = useCallback(
     (lang: Language) => {

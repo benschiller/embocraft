@@ -1,7 +1,13 @@
 import type { AICharacterSummary } from '@voxel/shared';
-import { expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
 import { initialAICharacter } from '../model';
 import { aiCharacterPresentation } from './agent-presentation';
+
+// These assertions cover the Chinese copy; English is the app default (Floperati).
+beforeAll(async () => {
+  const { i18n } = await import('../../../../i18n');
+  await i18n.changeLanguage('zh');
+});
 const job = (extra: Partial<AICharacterSummary> = {}): AICharacterSummary => ({
   ...initialAICharacter,
   id: 'agent',
