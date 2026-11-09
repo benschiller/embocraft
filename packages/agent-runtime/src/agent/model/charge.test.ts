@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { estimateTokens, RequestCharge, type RequestAccounting } from './charge';
+import {
+  estimateTokens,
+  RequestCharge,
+  type RequestAccounting,
+} from './charge';
 
 function fakeBudget(cap = () => 256) {
   const finishes: { tokens: number; estimated: boolean }[] = [];

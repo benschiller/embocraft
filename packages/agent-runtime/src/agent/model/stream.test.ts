@@ -3,7 +3,14 @@ import { stream } from '@earendil-works/pi-ai/api/openai-completions';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentConfig, ModelEndpoint } from '../../contracts/config';
 import { createModel, resolveMaxTokensField } from './pi';
-import { googleOptions, providerOptions, streamModel } from './stream';
+import {
+  ifmPayload,
+  ifmReasoningEffort,
+  googleOptions,
+  providerOptions,
+  requiresReasoningReplay,
+  streamModel,
+} from './stream';
 
 /** Explicit inputs; independent of CLI defaults and the developer's environment. */
 function config(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -370,5 +377,64 @@ describe('native Gemini transport', () => {
       toolChoice: 'any',
       thinking: { enabled: true, level: 'HIGH' },
     });
+  });
+});
+
+describe('IFM reasoning replay (Floperati)', () => {
+  it('applies only to IFM endpoints or IFM model ids', () => {
+    const ifm = { type: 'compatible', baseUrl: 'https://api.ifm.ai/v1' };
+    const other = { type: 'compatible', baseUrl: 'https://api.example.com/v1' };
+    expect(requiresReasoningReplay(ifm as ModelEndpoint, 'any')).toBe(true);
+    expect(
+      requiresReasoningReplay(
+        other as ModelEndpoint,
+        'IFM/K2-Horizon-375B-A23B',
+      ),
+    ).toBe(true);
+    expect(requiresReasoningReplay(other as ModelEndpoint, 'gpt-4o')).toBe(
+      false,
+    );
+    expect(
+      requiresReasoningReplay(
+        {
+          type: 'compatible',
+          baseUrl: 'https://notifm.ai.example/v1',
+        } as ModelEndpoint,
+        'x',
+      ),
+    ).toBe(false);
+  });
+
+  it('replays reasoning verbatim, keeps existing values, sends "" when absent, and sets effort', () => {
+    const payload = {
+      messages: [
+        { role: 'system', content: 's' },
+        { role: 'assistant', content: 'a', reasoning: 'trace one' },
+        { role: 'user', content: 'u' },
+        { role: 'assistant', content: null, tool_calls: [] },
+        { role: 'assistant', content: 'b', reasoning_content: 'kept' },
+      ],
+    };
+    const config = {
+      thinking: 'disabled',
+      reasoningEffort: 'high',
+    } as AgentConfig;
+    const out = ifmPayload(payload, config) as typeof payload & {
+      chat_template_kwargs: Record<string, unknown>;
+    };
+    expect(
+      out.messages.map((m) => (m as Record<string, unknown>).reasoning_content),
+    ).toEqual([undefined, 'trace one', undefined, '', 'kept']);
+    expect(out.chat_template_kwargs).toEqual({ reasoning_effort: 'low' });
+  });
+
+  it('maps thinking settings to an IFM reasoning effort', () => {
+    const effort = (thinking: string, reasoningEffort: string) =>
+      ifmReasoningEffort({ thinking, reasoningEffort } as AgentConfig);
+    expect(effort('disabled', 'max')).toBe('low');
+    expect(effort('enabled', 'low')).toBe('low');
+    expect(effort('enabled', 'none')).toBe('low');
+    expect(effort('enabled', 'high')).toBe('high');
+    expect(effort('enabled', 'max')).toBe('high');
   });
 });

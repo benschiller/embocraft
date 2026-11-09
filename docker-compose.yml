@@ -44,6 +44,8 @@ services:
       AGENT_GATEWAY_ALLOWED_ORIGINS: '${AGENT_GATEWAY_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}'
       # Encrypts provider API keys at rest in Postgres (AES-256-GCM). Unset = plaintext.
       DATA_ENCRYPTION_KEY: '${DATA_ENCRYPTION_KEY:-}'
+      # Optional: save failed model requests here (inside the server_data volume).
+      MODEL_DEBUG_DIR: '${MODEL_DEBUG_DIR:-}'
     volumes:
       - server_data:/app/.data
     ports:

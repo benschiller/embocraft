@@ -20,6 +20,7 @@ import {
   type RequestAccounting,
 } from './charge';
 import { streamFailure, thrownFailure, type StreamFailure } from './failure';
+import { reportProviderFailure, saveLastRequest } from './diagnostics';
 import { createModel } from './pi';
 
 /** Everything one character turn needs to make provider requests. */
@@ -111,6 +112,10 @@ async function relay(request: RelayRequest) {
           (event.type === 'done' ? event.message : event.error).usage
             .totalTokens,
         );
+        if (event.type === 'error' && !combined.aborted)
+          console.warn(
+            `[model] stream error status=${status} stopReason=${event.error.stopReason} message=${String(event.error.errorMessage ?? '').slice(0, 1000)}`,
+          );
         if (event.type === 'error' || combined.aborted)
           fail(
             streamFailure({
@@ -194,6 +199,62 @@ export function googleOptions(
 }
 
 /**
+ * IFM's hosted models are stateless reasoning models that reject a multi-turn
+ * request unless every assistant message carries `reasoning_content` ("" is
+ * valid). See https://docs.ifm.ai/docs/multi-turn.md
+ */
+export function requiresReasoningReplay(
+  endpoint: ModelEndpoint,
+  model: string,
+) {
+  let host = '';
+  try {
+    host = new URL(endpoint.baseUrl).hostname;
+  } catch {
+    // Invalid base URLs are rejected elsewhere.
+  }
+  return (
+    host === 'ifm.ai' || host.endsWith('.ifm.ai') || model.startsWith('IFM/')
+  );
+}
+
+/**
+ * IFM reasoning effort (`chat_template_kwargs.reasoning_effort`: low|medium|high,
+ * https://docs.ifm.ai/docs/reasoning.md). K2 always reasons; at its default effort
+ * it can spend the whole `max_tokens` budget before emitting the required tool call.
+ * Thinking off maps to `low`; thinking on follows the character's effort.
+ */
+export function ifmReasoningEffort(config: AgentConfig): 'low' | 'high' {
+  if (config.thinking !== 'enabled') return 'low';
+  return config.reasoningEffort === 'high' || config.reasoningEffort === 'max'
+    ? 'high'
+    : 'low';
+}
+
+/**
+ * Shape an IFM request: replay each assistant turn's reasoning as
+ * `reasoning_content` ("" when absent) and set the reasoning effort unless the
+ * request already carries one.
+ */
+export function ifmPayload(payload: unknown, config: AgentConfig) {
+  const params = payload as {
+    messages?: Array<Record<string, unknown>>;
+    chat_template_kwargs?: Record<string, unknown>;
+  };
+  for (const message of params.messages ?? []) {
+    if (message.role !== 'assistant') continue;
+    if (typeof message.reasoning_content === 'string') continue;
+    message.reasoning_content =
+      typeof message.reasoning === 'string' ? message.reasoning : '';
+  }
+  params.chat_template_kwargs = {
+    reasoning_effort: ifmReasoningEffort(config),
+    ...params.chat_template_kwargs,
+  };
+  return params;
+}
+
+/**
  * Static request options shared by every provider call of one stream.
  *
  * Every value here is a policy decision rather than a provider default: no
@@ -217,9 +278,15 @@ export function providerOptions(
       config.reasoningEffort !== 'none'
         ? (config.reasoningEffort as OpenAICompletionsOptions['reasoningEffort'])
         : undefined,
+    onPayload: requiresReasoningReplay(endpoint, config.model)
+      ? (payload) => ifmPayload(payload, config)
+      : undefined,
     fetch: async (url, init) => {
+      await saveLastRequest(init);
       const response = await request(url, { ...init, redirect: 'error' });
       onStatus(response.status);
+      if (response.status >= 400)
+        await reportProviderFailure(String(url), init, response);
       return response;
     },
   };
