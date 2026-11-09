@@ -86,5 +86,74 @@ export function createWorldRouter(): Router {
     },
   );
 
+  /**
+   * @openapi
+   * /world/view:
+   *   get:
+   *     summary: Read-only spectator stream (SSE)
+   *     description: >-
+   *       Watch the world without joining it: no player slot, no input. Sends
+   *       `snapshot` (revision + all blocks) on connect, `edit` for every
+   *       committed block edit, and `presence` (players and positions) every second.
+   *     tags:
+   *       - World
+   *     responses:
+   *       200:
+   *         description: SSE events snapshot, edit and presence
+   *         content:
+   *           text/event-stream:
+   *             schema:
+   *               type: string
+   *       403:
+   *         description: Origin not trusted
+   *       503:
+   *         description: World not ready, or the viewer limit is reached
+   */
+  router.get(
+    '/world/view',
+    createOriginGuard({ origin: allowed, required: false }),
+    cors({ origin: true }),
+    (_req, res) => {
+      const world = getActiveWorld();
+      if (!world) {
+        res.sendStatus(503);
+        return;
+      }
+      const write = (event: string, data: unknown) =>
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      // Subscribe and snapshot in the same synchronous step so no edit is missed.
+      const unsubscribe = world.viewers.subscribe((edit) =>
+        write('edit', edit),
+      );
+      if (!unsubscribe) {
+        res.sendStatus(503);
+        return;
+      }
+      res.status(200).set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      res.flushHeaders();
+      write('snapshot', world.viewerSnapshot());
+      const presence = () => {
+        const state = getActiveWorld()?.getPresence();
+        if (!state) {
+          res.end();
+          return;
+        }
+        // Doubles as the heartbeat; skip a tick rather than queue under backpressure.
+        if (!res.writableNeedDrain) write('presence', state);
+      };
+      const interval = setInterval(presence, 1000);
+      res.on('close', () => {
+        clearInterval(interval);
+        unsubscribe();
+      });
+      presence();
+    },
+  );
+
   return router;
 }

@@ -1,6 +1,7 @@
 import { ChatStore, WorldChat, visibleEvent } from '../chat';
 import { peekDatabaseClient } from '../../core/database/client';
 import { WorldStore } from './persistence/store';
+import { ViewerHub, type ViewerSnapshot } from './services/viewer-hub';
 
 /** Maps a world session to the managed AI character and run behind it, if any. */
 export type CharacterAttribution = (
@@ -64,6 +65,8 @@ export class WorldRoom extends Room<WorldState> {
   private queue: Promise<void> = Promise.resolve();
   autoDispose = false;
   maxClients = 16;
+  /** Read-only spectators (GET /world/view); never room clients. */
+  readonly viewers = new ViewerHub();
   async onCreate(
     options: {
       store?: WorldStore;
@@ -186,6 +189,13 @@ export class WorldRoom extends Room<WorldState> {
               });
             this.state.revision++;
             this.broadcast('edit', { ...edit, revision: this.state.revision });
+            this.viewers.publish({
+              x: edit.x,
+              y: edit.y,
+              z: edit.z,
+              material: edit.material,
+              revision: this.state.revision,
+            });
             this.event('block-edited', client.sessionId, edit);
             this.reply(client, id, true);
           })
@@ -296,10 +306,15 @@ export class WorldRoom extends Room<WorldState> {
     this.event('left', client.sessionId, {});
   }
   async onDispose() {
+    this.viewers.clear();
     this.chat.clear();
     await this.queue;
     await this.store?.close();
     if (this.ownsActive && activeRoom === this) setActiveWorld(undefined);
+  }
+  /** Full block state (terrain + edits) for a newly connected viewer. */
+  viewerSnapshot(): ViewerSnapshot {
+    return { revision: this.state.revision, blocks: [...this.blocks.values()] };
   }
   getPresence(): WorldPresence {
     return {
